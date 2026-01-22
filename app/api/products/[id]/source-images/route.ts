@@ -4,9 +4,9 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 /**
@@ -18,6 +18,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -25,7 +26,7 @@ export async function GET(
 
     const sourceImages = await prisma.sourceImage.findMany({
       where: {
-        productId: params.id
+        productId: id
       },
       orderBy: {
         imageOrder: 'asc'

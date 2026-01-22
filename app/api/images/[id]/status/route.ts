@@ -12,9 +12,10 @@ const updateStatusSchema = z.object({
 // PATCH /api/images/[id]/status - Update image status (approve/reject)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -25,7 +26,7 @@ export async function PATCH(
 
     // Get the image
     const image = await prisma.generatedImage.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         product: true,
         imageType: true
@@ -38,7 +39,7 @@ export async function PATCH(
 
     // Update image status
     const updatedImage = await prisma.generatedImage.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: validated.status
       },
@@ -66,7 +67,7 @@ export async function PATCH(
     if (validated.comment) {
       await prisma.comment.create({
         data: {
-          imageId: params.id,
+          imageId: id,
           userId: (session.user as any).id,
           content: validated.comment,
           issueTag: validated.status === 'NEEDS_REWORK' ? 'REWORK_REQUESTED' : undefined

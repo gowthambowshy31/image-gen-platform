@@ -12,9 +12,10 @@ const createCommentSchema = z.object({
 // POST /api/images/[id]/comments - Add a comment to an image
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -25,7 +26,7 @@ export async function POST(
 
     const comment = await prisma.comment.create({
       data: {
-        imageId: params.id,
+        imageId: id,
         userId: (session.user as any).id,
         content: validated.content,
         issueTag: validated.issueTag
@@ -61,9 +62,10 @@ export async function POST(
 // GET /api/images/[id]/comments - Get all comments for an image
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -71,7 +73,7 @@ export async function GET(
 
     const comments = await prisma.comment.findMany({
       where: {
-        imageId: params.id
+        imageId: id
       },
       include: {
         user: {

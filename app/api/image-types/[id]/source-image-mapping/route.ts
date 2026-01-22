@@ -5,9 +5,9 @@ import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 const mappingSchema = z.object({
@@ -25,6 +25,7 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -50,7 +51,7 @@ export async function POST(
 
     // Verify the image type exists
     const imageType = await prisma.imageType.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!imageType) {
@@ -75,7 +76,7 @@ export async function POST(
     // Update or create metadata with source image mappings
     const currentMetadata = (product.metadata as any) || {}
     const sourceImageMappings = currentMetadata.sourceImageMappings || {}
-    sourceImageMappings[params.id] = sourceImageId
+    sourceImageMappings[id] = sourceImageId
 
     const updatedProduct = await prisma.product.update({
       where: { id: productId },
@@ -95,7 +96,7 @@ export async function POST(
         entityType: "Product",
         entityId: productId,
         metadata: {
-          imageTypeId: params.id,
+          imageTypeId: id,
           imageTypeName: imageType.name,
           sourceImageId,
           sourceImageVariant: sourceImage.variant
@@ -106,7 +107,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       mapping: {
-        imageTypeId: params.id,
+        imageTypeId: id,
         sourceImageId,
         product: updatedProduct
       }
@@ -136,6 +137,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -167,7 +169,7 @@ export async function GET(
 
     const metadata = (product.metadata as any) || {}
     const sourceImageMappings = metadata.sourceImageMappings || {}
-    const mappedSourceImageId = sourceImageMappings[params.id]
+    const mappedSourceImageId = sourceImageMappings[id]
 
     let sourceImage = null
     if (mappedSourceImageId) {
@@ -175,7 +177,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      imageTypeId: params.id,
+      imageTypeId: id,
       sourceImageId: mappedSourceImageId || null,
       sourceImage: sourceImage || null,
       allSourceImages: product.sourceImages
