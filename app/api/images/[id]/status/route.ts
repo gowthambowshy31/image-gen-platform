@@ -136,7 +136,7 @@ export async function PATCH(
       }
     })
 
-    const allApproved = productImages.every(img => img.status === 'APPROVED')
+    const allApproved = productImages.every((img: { status: string }) => img.status === 'APPROVED')
     if (allApproved && productImages.length > 0) {
       await prisma.product.update({
         where: { id: image.productId },
