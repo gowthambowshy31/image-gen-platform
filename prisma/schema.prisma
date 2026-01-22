@@ -1,0 +1,325 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User Management
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String
+  role          UserRole  @default(CLIENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  products      Product[]
+  images        GeneratedImage[]
+  videos        GeneratedVideo[]
+  comments      Comment[]
+  activityLogs  ActivityLog[]
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  CLIENT
+  VIEWER
+}
+
+// Product Management
+model Product {
+  id              String    @id @default(cuid())
+  asin            String?   @unique
+  title           String
+  category        String?
+  status          ProductStatus @default(NOT_STARTED)
+  tags            String[]
+  metadata        Json?
+  originalImageUrl String?
+  createdById     String
+  createdBy       User      @relation(fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  images              GeneratedImage[]
+  videos              GeneratedVideo[]
+  promptOverrides     PromptOverride[]
+  videoPromptOverrides VideoPromptOverride[]
+  sourceImages        SourceImage[]
+}
+
+// Source Images from Amazon
+model SourceImage {
+  id              String    @id @default(cuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amazonImageUrl  String
+  localFilePath   String?
+  imageOrder      Int       @default(0)
+  width           Int?
+  height          Int?
+  fileSize        Int?
+  variant         String?   // MAIN, PT01, PT02, etc.
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  generatedImages GeneratedImage[]
+  generatedVideos GeneratedVideo[]
+
+  @@index([productId])
+}
+
+enum ProductStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Image Type Templates
+model ImageType {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  description     String?
+  order           Int       @default(0)
+  defaultPrompt   String    @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  images          GeneratedImage[]
+  promptOverrides PromptOverride[]
+  promptVersions  PromptVersion[]
+}
+
+// Prompt Version Control
+model PromptVersion {
+  id              String    @id @default(cuid())
+  imageTypeId     String
+  imageType       ImageType @relation(fields: [imageTypeId], references: [id], onDelete: Cascade)
+  promptText      String    @db.Text
+  version         Int
+  isActive        Boolean   @default(false)
+  changeNote      String?
+  createdAt       DateTime  @default(now())
+
+  @@index([imageTypeId, version])
+}
+
+// Product-specific prompt overrides
+model PromptOverride {
+  id              String    @id @default(cuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  imageTypeId     String
+  imageType       ImageType @relation(fields: [imageTypeId], references: [id], onDelete: Cascade)
+  customPrompt    String    @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([productId, imageTypeId])
+}
+
+// Generated Images
+model GeneratedImage {
+  id              String    @id @default(cuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  imageTypeId     String
+  imageType       ImageType @relation(fields: [imageTypeId], references: [id])
+  sourceImageId   String?
+  sourceImage     SourceImage? @relation(fields: [sourceImageId], references: [id])
+  version         Int       @default(1)
+  status          ImageStatus @default(PENDING)
+  filePath        String
+  fileName        String
+  fileSize        Int?
+  width           Int?
+  height          Int?
+  promptUsed      String    @db.Text
+  aiModel         String    @default("gemini")
+  generationParams Json?
+  parentImageId   String?
+  parentImage     GeneratedImage? @relation("ImageVersions", fields: [parentImageId], references: [id])
+  childImages     GeneratedImage[] @relation("ImageVersions")
+  isPrimary       Boolean   @default(false)
+  generatedById   String
+  generatedBy     User      @relation(fields: [generatedById], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  comments        Comment[]
+  generatedVideos GeneratedVideo[]
+
+  @@index([productId, imageTypeId])
+  @@index([status])
+}
+
+enum ImageStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  APPROVED
+  NEEDS_REWORK
+  REJECTED
+}
+
+// Video Type Templates
+model VideoType {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  description     String?
+  order           Int       @default(0)
+  defaultPrompt   String    @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  videos          GeneratedVideo[]
+  promptOverrides VideoPromptOverride[]
+  promptVersions  VideoPromptVersion[]
+}
+
+// Video Prompt Version Control
+model VideoPromptVersion {
+  id              String    @id @default(cuid())
+  videoTypeId     String
+  videoType       VideoType @relation(fields: [videoTypeId], references: [id], onDelete: Cascade)
+  promptText      String    @db.Text
+  version         Int
+  isActive        Boolean   @default(false)
+  changeNote      String?
+  createdAt       DateTime  @default(now())
+
+  @@index([videoTypeId, version])
+}
+
+// Product-specific video prompt overrides
+model VideoPromptOverride {
+  id              String    @id @default(cuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  videoTypeId     String
+  videoType       VideoType @relation(fields: [videoTypeId], references: [id], onDelete: Cascade)
+  customPrompt    String    @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([productId, videoTypeId])
+}
+
+// Generated Videos
+model GeneratedVideo {
+  id                    String    @id @default(cuid())
+  productId             String
+  product               Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  videoTypeId           String?
+  videoType             VideoType? @relation(fields: [videoTypeId], references: [id])
+  sourceImageId         String?
+  sourceImage           SourceImage? @relation(fields: [sourceImageId], references: [id])
+  generatedImageId      String?
+  generatedImage        GeneratedImage? @relation(fields: [generatedImageId], references: [id])
+  status                VideoStatus @default(PENDING)
+  filePath              String?
+  fileName              String?
+  fileSize              Int?
+  promptUsed            String    @db.Text
+  aiModel               String    @default("veo-3.1")
+  operationName         String?
+  aspectRatio           String    @default("16:9")
+  durationSeconds       Int       @default(4)
+  resolution            String    @default("720p")
+  generatedById         String
+  generatedBy           User      @relation(fields: [generatedById], references: [id])
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([productId])
+  @@index([status])
+  @@index([videoTypeId])
+}
+
+enum VideoStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+  APPROVED
+  REJECTED
+}
+
+// Comments and Feedback
+model Comment {
+  id              String    @id @default(cuid())
+  imageId         String
+  image           GeneratedImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  content         String    @db.Text
+  issueTag        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([imageId])
+}
+
+// Generation Queue
+model GenerationJob {
+  id              String    @id @default(cuid())
+  productIds      String[]
+  imageTypeIds    String[]
+  status          JobStatus @default(QUEUED)
+  priority        Int       @default(0)
+  totalImages     Int       @default(0)
+  completedImages Int       @default(0)
+  failedImages    Int       @default(0)
+  errorLog        String?   @db.Text
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, priority])
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// Activity Logs
+model ActivityLog {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  action          String
+  entityType      String
+  entityId        String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Analytics
+model Analytics {
+  id              String    @id @default(cuid())
+  date            DateTime  @default(now())
+  imagesGenerated Int       @default(0)
+  imagesApproved  Int       @default(0)
+  imagesRejected  Int       @default(0)
+  averageIterations Float?
+  totalCost       Float?
+  metadata        Json?
+
+  @@index([date])
+}

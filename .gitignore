@@ -36,6 +36,18 @@ yarn-error.log*
 # vercel
 .vercel
 
+# uploads (images and videos - stored in S3 in production)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/app/generated/prisma
+
+# test outputs and temp files
+test-image-response.json
+video-operation.json
+nul
+WorkCode
