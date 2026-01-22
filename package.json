@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma db push --skip-generate && next build",
+    "postbuild": "node -e \"console.log('Build complete. Run db:seed separately if needed.')\"",
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
