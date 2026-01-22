@@ -160,7 +160,7 @@ async function populateProducts(asins: string[]) {
 }
 
 // ASINs to populate - Add your Amazon product ASINs here
-const asinsToPopulate = [
+const asinsToPopulate: string[] = [
   // Add your ASINs here, for example:
   // 'B08N5WRWNW',
   // 'B0ABC123XY',

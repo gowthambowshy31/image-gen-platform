@@ -94,24 +94,36 @@ export async function PATCH(
     // Update analytics
     const today = new Date()
     today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
 
-    const analyticsUpdate: any = {}
-    if (validated.status === 'APPROVED') {
-      analyticsUpdate.imagesApproved = { increment: 1 }
-    } else if (validated.status === 'REJECTED') {
-      analyticsUpdate.imagesRejected = { increment: 1 }
-    }
-
-    if (Object.keys(analyticsUpdate).length > 0) {
-      await prisma.analytics.upsert({
-        where: { date: today },
-        create: {
-          date: today,
-          imagesApproved: validated.status === 'APPROVED' ? 1 : 0,
-          imagesRejected: validated.status === 'REJECTED' ? 1 : 0
-        },
-        update: analyticsUpdate
+    if (validated.status === 'APPROVED' || validated.status === 'REJECTED') {
+      // Find or create today's analytics record
+      let analytics = await prisma.analytics.findFirst({
+        where: {
+          date: {
+            gte: today,
+            lt: tomorrow
+          }
+        }
       })
+
+      if (analytics) {
+        await prisma.analytics.update({
+          where: { id: analytics.id },
+          data: validated.status === 'APPROVED'
+            ? { imagesApproved: { increment: 1 } }
+            : { imagesRejected: { increment: 1 } }
+        })
+      } else {
+        await prisma.analytics.create({
+          data: {
+            date: today,
+            imagesApproved: validated.status === 'APPROVED' ? 1 : 0,
+            imagesRejected: validated.status === 'REJECTED' ? 1 : 0
+          }
+        })
+      }
     }
 
     // Check if all images for this product are approved
@@ -136,7 +148,7 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Validation error", details: error.errors },
+        { error: "Validation error", details: error.issues },
         { status: 400 }
       )
     }

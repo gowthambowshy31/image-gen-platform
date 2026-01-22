@@ -1,3 +1,4 @@
+// @ts-ignore - amazon-sp-api types are not fully compatible
 import SellingPartnerAPI from "amazon-sp-api"
 
 interface AmazonCredentials {
@@ -39,6 +40,7 @@ export class AmazonSPService {
       seller_id: process.env.AMAZON_SELLER_ID || ""
     }
 
+    // @ts-ignore - constructor type issue
     this.client = new SellingPartnerAPI({
       region: creds.region,
       refresh_token: creds.refresh_token,
