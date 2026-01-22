@@ -30,8 +30,9 @@ export async function GET(request: NextRequest) {
     })
 
     // Calculate totals
+    type AnalyticsTotals = { imagesGenerated: number; imagesApproved: number; imagesRejected: number; totalCost: number }
     const totals = analytics.reduce(
-      (acc: { imagesGenerated: number; imagesApproved: number; imagesRejected: number; totalCost: number }, curr) => ({
+      (acc: AnalyticsTotals, curr: typeof analytics[0]) => ({
         imagesGenerated: acc.imagesGenerated + curr.imagesGenerated,
         imagesApproved: acc.imagesApproved + curr.imagesApproved,
         imagesRejected: acc.imagesRejected + curr.imagesRejected,
