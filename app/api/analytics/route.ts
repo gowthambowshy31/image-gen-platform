@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate totals
     const totals = analytics.reduce(
-      (acc, curr) => ({
+      (acc: { imagesGenerated: number; imagesApproved: number; imagesRejected: number; totalCost: number }, curr) => ({
         imagesGenerated: acc.imagesGenerated + curr.imagesGenerated,
         imagesApproved: acc.imagesApproved + curr.imagesApproved,
         imagesRejected: acc.imagesRejected + curr.imagesRejected,
