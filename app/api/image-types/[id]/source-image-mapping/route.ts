@@ -173,7 +173,7 @@ export async function GET(
 
     let sourceImage = null
     if (mappedSourceImageId) {
-      sourceImage = product.sourceImages.find(img => img.id === mappedSourceImageId)
+      sourceImage = product.sourceImages.find((img: { id: string }) => img.id === mappedSourceImageId)
     }
 
     return NextResponse.json({
