@@ -1,0 +1,28 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
+  environmentVariables:
+    DATABASE_URL: ${DATABASE_URL}
+    NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+    AUTH_SECRET: ${AUTH_SECRET}
+    GEMINI_API_KEY: ${GEMINI_API_KEY}
+    AMAZON_REGION: ${AMAZON_REGION}
+    AMAZON_MARKETPLACE_ID: ${AMAZON_MARKETPLACE_ID}
+    AMAZON_SELLER_ID: ${AMAZON_SELLER_ID}
+    AMAZON_CLIENT_ID: ${AMAZON_CLIENT_ID}
+    AMAZON_CLIENT_SECRET: ${AMAZON_CLIENT_SECRET}
+    AMAZON_REFRESH_TOKEN: ${AMAZON_REFRESH_TOKEN}
