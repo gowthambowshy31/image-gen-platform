@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { AmazonSPClient } from "@/lib/amazon-sp"
+import { AmazonSPService } from "@/lib/amazon-sp"
 
 // POST /api/admin/import-amazon-products - Import products from Amazon FBA inventory
 export async function POST() {
   try {
-    const amazonClient = new AmazonSPClient()
+    const amazonClient = new AmazonSPService()
 
     // Fetch FBA inventory
     console.log("Fetching FBA inventory from Amazon...")
-    const inventory = await amazonClient.getFBAInventory()
+    const inventory = await amazonClient.getFBAInventoryWithQuantity()
 
     if (!inventory || inventory.length === 0) {
       return NextResponse.json({
@@ -59,7 +59,7 @@ export async function POST() {
 
         // Fetch product details from Amazon
         console.log(`Fetching details for ${asin}...`)
-        const productDetails = await amazonClient.getProductDetails(asin)
+        const productDetails = await amazonClient.getProductByASIN(asin)
 
         if (!productDetails) {
           console.log(`Could not fetch details for ${asin}`)
@@ -74,14 +74,13 @@ export async function POST() {
               data: {
                 asin,
                 title: productDetails.title || `Product ${asin}`,
-                category: productDetails.category || "Uncategorized",
+                category: productDetails.productType || "Uncategorized",
                 status: "NOT_STARTED",
                 createdById: adminUser.id,
                 metadata: {
-                  fnsku: item.fnsku,
-                  sku: item.sellerSku,
-                  fulfillmentChannel: item.fulfillmentChannel,
-                  condition: item.condition
+                  brand: productDetails.brand,
+                  manufacturer: productDetails.manufacturer,
+                  quantity: item.quantity
                 }
               }
             })
@@ -89,17 +88,19 @@ export async function POST() {
         // Download and save images
         if (productDetails.images && productDetails.images.length > 0) {
           for (let imgIndex = 0; imgIndex < productDetails.images.length; imgIndex++) {
-            const imageUrl = productDetails.images[imgIndex]
+            const image = productDetails.images[imgIndex]
 
             try {
               // Create source image record (URL only, no local download in serverless)
               await prisma.sourceImage.create({
                 data: {
                   productId: product.id,
-                  amazonImageUrl: imageUrl,
+                  amazonImageUrl: image.link,
                   localFilePath: null,
-                  variant: imgIndex === 0 ? "MAIN" : `PT0${imgIndex}`,
-                  imageOrder: imgIndex
+                  variant: image.variant || (imgIndex === 0 ? "MAIN" : `PT0${imgIndex}`),
+                  imageOrder: imgIndex,
+                  width: image.width,
+                  height: image.height
                 }
               })
             } catch (imgError) {
