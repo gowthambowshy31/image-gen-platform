@@ -5,11 +5,43 @@ import { AmazonSPService } from "@/lib/amazon-sp"
 // POST /api/admin/import-amazon-products - Import products from Amazon FBA inventory
 export async function POST() {
   try {
+    // Check environment variables first
+    const envCheck = {
+      AMAZON_REGION: !!process.env.AMAZON_REGION,
+      AMAZON_MARKETPLACE_ID: !!process.env.AMAZON_MARKETPLACE_ID,
+      AMAZON_CLIENT_ID: !!process.env.AMAZON_CLIENT_ID,
+      AMAZON_CLIENT_SECRET: !!process.env.AMAZON_CLIENT_SECRET,
+      AMAZON_REFRESH_TOKEN: !!process.env.AMAZON_REFRESH_TOKEN,
+      DATABASE_URL: !!process.env.DATABASE_URL
+    }
+
+    const missingEnvVars = Object.entries(envCheck)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key)
+
+    if (missingEnvVars.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `Missing environment variables: ${missingEnvVars.join(", ")}`,
+        envCheck
+      }, { status: 500 })
+    }
+
     const amazonClient = new AmazonSPService()
 
     // Fetch FBA inventory
     console.log("Fetching FBA inventory from Amazon...")
-    const inventory = await amazonClient.getFBAInventoryWithQuantity()
+    let inventory
+    try {
+      inventory = await amazonClient.getFBAInventoryWithQuantity()
+    } catch (inventoryError) {
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch FBA inventory from Amazon",
+        details: String(inventoryError),
+        envCheck
+      }, { status: 500 })
+    }
 
     if (!inventory || inventory.length === 0) {
       return NextResponse.json({
@@ -140,7 +172,12 @@ export async function POST() {
   } catch (error) {
     console.error("Error importing Amazon products:", error)
     return NextResponse.json(
-      { error: "Failed to import Amazon products", details: String(error) },
+      {
+        success: false,
+        error: "Failed to import Amazon products",
+        details: String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
