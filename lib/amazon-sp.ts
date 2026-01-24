@@ -7,7 +7,6 @@ interface AmazonCredentials {
   client_id: string
   client_secret: string
   marketplace_id: string
-  seller_id: string
 }
 
 interface AmazonProductImage {
@@ -36,8 +35,7 @@ export class AmazonSPService {
       refresh_token: process.env.AMAZON_REFRESH_TOKEN || "",
       client_id: process.env.AMAZON_CLIENT_ID || "",
       client_secret: process.env.AMAZON_CLIENT_SECRET || "",
-      marketplace_id: process.env.AMAZON_MARKETPLACE_ID || "ATVPDKIKX0DER",
-      seller_id: process.env.AMAZON_SELLER_ID || ""
+      marketplace_id: process.env.AMAZON_MARKETPLACE_ID || "ATVPDKIKX0DER"
     }
 
     // @ts-ignore - constructor type issue
