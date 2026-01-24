@@ -6,6 +6,12 @@ frontend:
         - npm ci
     build:
       commands:
+        # Write environment variables to .env.production for Next.js SSR runtime
+        - env | grep -e DATABASE_URL >> .env.production
+        - env | grep -e NEXTAUTH_SECRET >> .env.production
+        - env | grep -e AUTH_SECRET >> .env.production
+        - env | grep -e GEMINI_API_KEY >> .env.production
+        - env | grep -e AMAZON_ >> .env.production
         - npm run build
   artifacts:
     baseDirectory: .next
@@ -15,14 +21,3 @@ frontend:
     paths:
       - node_modules/**/*
       - .next/cache/**/*
-  environmentVariables:
-    DATABASE_URL: ${DATABASE_URL}
-    NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-    AUTH_SECRET: ${AUTH_SECRET}
-    GEMINI_API_KEY: ${GEMINI_API_KEY}
-    AMAZON_REGION: ${AMAZON_REGION}
-    AMAZON_MARKETPLACE_ID: ${AMAZON_MARKETPLACE_ID}
-    AMAZON_SELLER_ID: ${AMAZON_SELLER_ID}
-    AMAZON_CLIENT_ID: ${AMAZON_CLIENT_ID}
-    AMAZON_CLIENT_SECRET: ${AMAZON_CLIENT_SECRET}
-    AMAZON_REFRESH_TOKEN: ${AMAZON_REFRESH_TOKEN}
