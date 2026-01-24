@@ -36,29 +36,35 @@ export async function POST() {
     let skipped = 0
     let errors = 0
 
-    // Process in batches of 10 to avoid timeout
-    const batchSize = 10
-    const maxProducts = 50 // Limit for initial import to avoid timeout
+    // Process ALL products - skipped ones don't count toward limit
+    // Only limit actual API calls to Amazon (new products to fetch)
+    const maxNewProducts = 100 // Max new products to import per request (to avoid timeout)
 
-    for (let i = 0; i < Math.min(inventory.length, maxProducts); i++) {
+    for (let i = 0; i < inventory.length; i++) {
+      // Stop if we've processed enough NEW products
+      if (processed >= maxNewProducts) {
+        console.log(`Reached limit of ${maxNewProducts} new products`)
+        break
+      }
+
       const item = inventory[i]
       const asin = item.asin
 
       try {
-        // Check if product already exists
+        // Check if product already exists (fast DB query, no limit needed)
         const existingProduct = await prisma.product.findFirst({
           where: { asin },
           include: { sourceImages: true }
         })
 
         if (existingProduct && existingProduct.sourceImages.length > 0) {
-          console.log(`Skipping ${asin} - already exists with images`)
+          // Skip silently - don't log every skip to reduce noise
           skipped++
           continue
         }
 
         // Fetch product details from Amazon
-        console.log(`Fetching details for ${asin}...`)
+        console.log(`Fetching details for ${asin}... (${processed + 1}/${maxNewProducts})`)
         const productDetails = await amazonClient.getProductByASIN(asin)
 
         if (!productDetails) {
@@ -110,15 +116,17 @@ export async function POST() {
         }
 
         processed++
-        console.log(`Processed ${asin} (${processed}/${maxProducts})`)
+        console.log(`Processed ${asin} (${processed}/${maxNewProducts})`)
 
         // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 300))
       } catch (error) {
         console.error(`Error processing ${asin}:`, error)
         errors++
       }
     }
+
+    const hasMore = processed >= maxNewProducts && (skipped + processed + errors) < inventory.length
 
     return NextResponse.json({
       success: true,
@@ -126,7 +134,8 @@ export async function POST() {
       skipped,
       errors,
       total: inventory.length,
-      message: `Imported ${processed} products. ${inventory.length > maxProducts ? `Limited to first ${maxProducts} products.` : ""}`
+      hasMore,
+      message: `Imported ${processed} products. Skipped ${skipped} existing.${hasMore ? " Run again to import more." : ""}`
     })
   } catch (error) {
     console.error("Error importing Amazon products:", error)
