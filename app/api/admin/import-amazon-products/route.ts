@@ -70,7 +70,8 @@ export async function POST() {
 
     // Process ALL products - skipped ones don't count toward limit
     // Only limit actual API calls to Amazon (new products to fetch)
-    const maxNewProducts = 100 // Max new products to import per request (to avoid timeout)
+    // Amplify has ~30s timeout, each product takes ~1-2s, so limit to 15 new products
+    const maxNewProducts = 15 // Max new products to import per request (to avoid Amplify timeout)
 
     for (let i = 0; i < inventory.length; i++) {
       // Stop if we've processed enough NEW products
