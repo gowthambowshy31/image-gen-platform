@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { AmazonSPService } from "@/lib/amazon-sp"
+import { downloadAndStoreImage } from "@/lib/image-storage"
 
 // POST /api/admin/import-amazon-products - Import products from Amazon FBA inventory
 export async function POST() {
@@ -70,8 +71,8 @@ export async function POST() {
 
     // Process ALL products - skipped ones don't count toward limit
     // Only limit actual API calls to Amazon (new products to fetch)
-    // Amplify has ~30s timeout, each product takes ~1-2s, so limit to 15 new products
-    const maxNewProducts = 15 // Max new products to import per request (to avoid Amplify timeout)
+    // With S3 uploads, each product takes longer, so reduce batch size
+    const maxNewProducts = 5 // Max new products to import per request (reduced for S3 uploads)
 
     for (let i = 0; i < inventory.length; i++) {
       // Stop if we've processed enough NEW products
@@ -124,24 +125,51 @@ export async function POST() {
               }
             })
 
-        // Download and save images
+        // Download and save images to S3
         if (productDetails.images && productDetails.images.length > 0) {
-          for (let imgIndex = 0; imgIndex < productDetails.images.length; imgIndex++) {
-            const image = productDetails.images[imgIndex]
+          // Limit images per product to avoid timeouts (take highest resolution per variant)
+          const imagesByVariant = new Map<string, typeof productDetails.images[0]>()
+          for (const img of productDetails.images) {
+            const variant = img.variant || "MAIN"
+            const existing = imagesByVariant.get(variant)
+            if (!existing || (img.width * img.height) > (existing.width * existing.height)) {
+              imagesByVariant.set(variant, img)
+            }
+          }
+          const uniqueImages = Array.from(imagesByVariant.values())
+
+          for (let imgIndex = 0; imgIndex < uniqueImages.length; imgIndex++) {
+            const image = uniqueImages[imgIndex]
+            const variant = image.variant || (imgIndex === 0 ? "MAIN" : `PT0${imgIndex}`)
 
             try {
-              // Create source image record (URL only, no local download in serverless)
+              // Download image and upload to S3
+              const storageResult = await downloadAndStoreImage({
+                url: image.link,
+                productId: product.id,
+                variant: variant,
+                order: imgIndex
+              })
+
+              // Create source image record with S3 path
               await prisma.sourceImage.create({
                 data: {
                   productId: product.id,
                   amazonImageUrl: image.link,
-                  localFilePath: null,
-                  variant: image.variant || (imgIndex === 0 ? "MAIN" : `PT0${imgIndex}`),
+                  localFilePath: storageResult.success ? storageResult.filePath : null,
+                  variant: variant,
                   imageOrder: imgIndex,
-                  width: image.width,
-                  height: image.height
+                  width: storageResult.width || image.width,
+                  height: storageResult.height || image.height,
+                  fileSize: storageResult.fileSize
                 }
               })
+
+              if (storageResult.success) {
+                console.log(`  Uploaded image ${variant} to S3`)
+              } else {
+                console.log(`  Failed to upload ${variant}: ${storageResult.error}`)
+              }
             } catch (imgError) {
               console.error(`Error saving image for ${asin}:`, imgError)
             }

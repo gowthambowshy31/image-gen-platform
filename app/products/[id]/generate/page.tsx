@@ -263,7 +263,7 @@ export default function GenerateImagesPage() {
               .filter(img => img.status === 'COMPLETED')
               .map(img => ({
                 id: img.id,
-                url: `/uploads/${img.fileName}`,
+                url: img.filePath?.startsWith('http') ? img.filePath : `/uploads/${img.fileName}`,
                 label: img.imageType.name,
                 sublabel: `v${img.imageType.name}`,
                 width: img.width,

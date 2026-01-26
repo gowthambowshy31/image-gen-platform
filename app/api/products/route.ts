@@ -84,7 +84,9 @@ export async function GET(request: NextRequest) {
     // Filter products to only include those with inventory > 0
     const productsWithInventory = products.filter(product => {
       const metadata = product.metadata as any
-      return metadata?.inventory?.quantity > 0
+      // Check both possible locations for quantity
+      const quantity = metadata?.quantity ?? metadata?.inventory?.quantity ?? 0
+      return quantity > 0
     })
 
     return NextResponse.json(productsWithInventory)

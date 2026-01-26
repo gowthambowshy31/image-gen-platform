@@ -3,8 +3,31 @@ import { auth } from "@/lib/auth"
 
 import { prisma } from "@/lib/prisma"
 import { generateImage } from "@/lib/gemini"
+import { uploadToS3 } from "@/lib/s3"
 import { z } from "zod"
 import path from "path"
+import fs from "fs/promises"
+import os from "os"
+
+// Helper function to download image from URL to temp file
+async function downloadImageToTemp(url: string): Promise<string | null> {
+  try {
+    console.log('📥 Downloading image from URL:', url)
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('❌ Failed to download image:', response.statusText)
+      return null
+    }
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const tempPath = path.join(os.tmpdir(), `source-${Date.now()}.jpg`)
+    await fs.writeFile(tempPath, buffer)
+    console.log('✅ Image downloaded to temp:', tempPath)
+    return tempPath
+  } catch (error) {
+    console.error('❌ Error downloading image:', error)
+    return null
+  }
+}
 
 const generateImageSchema = z.object({
   productId: z.string(),
@@ -90,6 +113,7 @@ export async function POST(request: NextRequest) {
     // Determine source image path
     let sourceImagePath: string | undefined
     let sourceImageId: string | undefined
+    let tempFilePath: string | null = null // Track temp file for cleanup
 
     if (validated.sourceImageId) {
       // Use the selected source image from Amazon
@@ -97,9 +121,22 @@ export async function POST(request: NextRequest) {
         where: { id: validated.sourceImageId }
       })
 
-      if (sourceImage && sourceImage.localFilePath) {
-        sourceImagePath = path.join(process.cwd(), 'public', sourceImage.localFilePath)
+      if (sourceImage) {
         sourceImageId = sourceImage.id
+        if (sourceImage.localFilePath) {
+          // Use S3 or local file
+          if (sourceImage.localFilePath.startsWith('http')) {
+            // S3 URL - download to temp
+            tempFilePath = await downloadImageToTemp(sourceImage.localFilePath)
+            sourceImagePath = tempFilePath || undefined
+          } else {
+            sourceImagePath = path.join(process.cwd(), 'public', sourceImage.localFilePath)
+          }
+        } else if (sourceImage.amazonImageUrl) {
+          // No local file, download from Amazon URL
+          tempFilePath = await downloadImageToTemp(sourceImage.amazonImageUrl)
+          sourceImagePath = tempFilePath || undefined
+        }
       }
     } else if (validated.generatedImageId) {
       // Use a previously generated image as source
@@ -107,7 +144,13 @@ export async function POST(request: NextRequest) {
         where: { id: validated.generatedImageId }
       })
       if (generatedImage) {
-        sourceImagePath = generatedImage.filePath
+        // If filePath is a URL (S3), download it to temp
+        if (generatedImage.filePath?.startsWith('http')) {
+          tempFilePath = await downloadImageToTemp(generatedImage.filePath)
+          sourceImagePath = tempFilePath || undefined
+        } else {
+          sourceImagePath = path.join(process.cwd(), 'public', generatedImage.filePath)
+        }
         // Keep the original source image ID if available
         sourceImageId = generatedImage.sourceImageId || undefined
       }
@@ -117,15 +160,32 @@ export async function POST(request: NextRequest) {
         where: { id: validated.parentImageId }
       })
       if (parentImage) {
-        sourceImagePath = parentImage.filePath
+        // If filePath is a URL (S3), download it to temp
+        if (parentImage.filePath?.startsWith('http')) {
+          tempFilePath = await downloadImageToTemp(parentImage.filePath)
+          sourceImagePath = tempFilePath || undefined
+        } else {
+          sourceImagePath = path.join(process.cwd(), 'public', parentImage.filePath)
+        }
         sourceImageId = parentImage.sourceImageId || undefined
       }
     } else if (product.sourceImages.length > 0) {
       // Default to first source image if available
       const firstSourceImage = product.sourceImages[0]
+      sourceImageId = firstSourceImage.id
       if (firstSourceImage.localFilePath) {
-        sourceImagePath = path.join(process.cwd(), 'public', firstSourceImage.localFilePath)
-        sourceImageId = firstSourceImage.id
+        // Use S3 or local file
+        if (firstSourceImage.localFilePath.startsWith('http')) {
+          // S3 URL - download to temp
+          tempFilePath = await downloadImageToTemp(firstSourceImage.localFilePath)
+          sourceImagePath = tempFilePath || undefined
+        } else {
+          sourceImagePath = path.join(process.cwd(), 'public', firstSourceImage.localFilePath)
+        }
+      } else if (firstSourceImage.amazonImageUrl) {
+        // No local file, download from Amazon URL
+        tempFilePath = await downloadImageToTemp(firstSourceImage.amazonImageUrl)
+        sourceImagePath = tempFilePath || undefined
       }
     }
 
@@ -234,11 +294,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Upload generated image to S3
+    let finalFilePath = outputPath
+    try {
+      const imageBuffer = await fs.readFile(outputPath)
+      const s3Key = `generated-images/${product.id}/${fileName}`
+      const s3Result = await uploadToS3({
+        buffer: imageBuffer,
+        key: s3Key,
+        contentType: 'image/png'
+      })
+
+      if (s3Result.success && s3Result.url) {
+        finalFilePath = s3Result.url
+        console.log('☁️  Uploaded generated image to S3:', s3Result.url)
+
+        // Delete local file after successful S3 upload
+        try {
+          await fs.unlink(outputPath)
+          console.log('🧹 Deleted local file after S3 upload')
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      } else {
+        console.log('⚠️  S3 upload failed, keeping local file:', s3Result.error)
+      }
+    } catch (s3Error) {
+      console.error('⚠️  Error uploading to S3, keeping local file:', s3Error)
+    }
+
     // Update image record with results
     const updatedImage = await prisma.generatedImage.update({
       where: { id: imageRecord.id },
       data: {
         status: 'COMPLETED',
+        filePath: finalFilePath,
         width: result.width,
         height: result.height,
         fileSize: result.fileSize
@@ -297,6 +387,16 @@ export async function POST(request: NextRequest) {
           imagesGenerated: 1
         }
       })
+    }
+
+    // Cleanup temp file if created
+    if (tempFilePath) {
+      try {
+        await fs.unlink(tempFilePath)
+        console.log('🧹 Cleaned up temp file:', tempFilePath)
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     }
 
     return NextResponse.json(updatedImage, { status: 201 })

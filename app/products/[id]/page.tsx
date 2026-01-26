@@ -240,7 +240,7 @@ export default function ProductDetailPage() {
                 <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition group">
                   <div className="relative aspect-square bg-gray-100 rounded">
                     <img
-                      src={`/uploads/${image.fileName}`}
+                      src={image.filePath?.startsWith('http') ? image.filePath : `/uploads/${image.fileName}`}
                       alt={`${product.title} - ${image.imageType.name}`}
                       className="object-contain w-full h-full rounded"
                     />

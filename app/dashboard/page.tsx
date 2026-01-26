@@ -472,7 +472,7 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <span className="font-semibold text-blue-600">
-                        {(product.metadata as any)?.inventory?.quantity || 0}
+                        {(product.metadata as any)?.quantity ?? (product.metadata as any)?.inventory?.quantity ?? 0}
                       </span> units
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
