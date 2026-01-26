@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import ImageSelector from "@/app/components/ImageSelector"
+import TemplateSelector from "@/app/components/TemplateSelector"
 
 interface ImageType {
   id: string
@@ -38,6 +39,7 @@ interface Product {
   id: string
   title: string
   asin?: string
+  category?: string
   sourceImages: SourceImage[]
   images?: GeneratedImage[]
 }
@@ -51,6 +53,8 @@ export default function GenerateImagesPage() {
   const [selectedSourceImage, setSelectedSourceImage] = useState<string>("")
   const [selectedGeneratedImage, setSelectedGeneratedImage] = useState<string>("")
   const [customPrompt, setCustomPrompt] = useState<string>("")
+  const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState<string>("")
@@ -130,9 +134,15 @@ export default function GenerateImagesPage() {
             requestBody.generatedImageId = selectedGeneratedImage
           }
 
-          // Add custom prompt if provided
-          if (customPrompt.trim()) {
-            requestBody.customPrompt = customPrompt.trim()
+          // Build the final prompt: template + custom additions
+          const finalPrompt = [templatePrompt, customPrompt.trim()].filter(Boolean).join("\n\n")
+          if (finalPrompt) {
+            requestBody.customPrompt = finalPrompt
+          }
+
+          // Track template usage if a template was selected
+          if (selectedTemplateId) {
+            requestBody.templateId = selectedTemplateId
           }
 
           const response = await fetch('/api/images/generate', {
@@ -268,19 +278,38 @@ export default function GenerateImagesPage() {
           />
         )}
 
+        {/* Template Selector */}
+        {product && (
+          <TemplateSelector
+            category="image"
+            product={{
+              id: product.id,
+              title: product.title,
+              category: product.category,
+              asin: product.asin
+            }}
+            onPromptGenerated={(prompt, templateId) => {
+              setTemplatePrompt(prompt)
+              setSelectedTemplateId(templateId)
+            }}
+          />
+        )}
+
         {/* Custom Prompt */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Custom Prompt (Optional)
+            {templatePrompt ? "Additional Instructions (Optional)" : "Custom Prompt (Optional)"}
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Add specific instructions for the AI (e.g., "make the diamond smaller", "increase product size", "brighter lighting").
-            This will be combined with the image type's default prompt.
+            {templatePrompt
+              ? "Add any additional instructions to combine with the template prompt above."
+              : "Add specific instructions for the AI (e.g., \"make the diamond smaller\", \"increase product size\", \"brighter lighting\"). This will be combined with the image type's default prompt."
+            }
           </p>
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="Enter custom instructions here..."
+            placeholder={templatePrompt ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
             className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>

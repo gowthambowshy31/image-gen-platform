@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import ImageSelector from '@/app/components/ImageSelector'
+import TemplateSelector from '@/app/components/TemplateSelector'
 
 interface Product {
   id: string
@@ -69,6 +70,8 @@ export default function GenerateVideoPage() {
   const [selectedSourceImage, setSelectedSourceImage] = useState<string>('')
   const [selectedGeneratedImage, setSelectedGeneratedImage] = useState<string>('')
   const [customPrompt, setCustomPrompt] = useState<string>('')
+  const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [aspectRatio, setAspectRatio] = useState('16:9')
   const [duration, setDuration] = useState(4)
   const [resolution, setResolution] = useState('720p')
@@ -132,9 +135,15 @@ export default function GenerateVideoPage() {
         requestBody.generatedImageId = selectedGeneratedImage
       }
 
-      // Add custom prompt if provided
-      if (customPrompt.trim()) {
-        requestBody.customPrompt = customPrompt.trim()
+      // Build the final prompt: template + custom additions
+      const finalPrompt = [templatePrompt, customPrompt.trim()].filter(Boolean).join("\n\n")
+      if (finalPrompt) {
+        requestBody.customPrompt = finalPrompt
+      }
+
+      // Track template usage if a template was selected
+      if (selectedTemplateId) {
+        requestBody.templateId = selectedTemplateId
       }
 
       const response = await fetch('/api/videos/generate', {
@@ -334,19 +343,38 @@ export default function GenerateVideoPage() {
           />
         )}
 
+        {/* Template Selector */}
+        {product && (
+          <TemplateSelector
+            category="video"
+            product={{
+              id: product.id,
+              title: product.title,
+              category: product.category,
+              asin: product.asin
+            }}
+            onPromptGenerated={(prompt, templateId) => {
+              setTemplatePrompt(prompt)
+              setSelectedTemplateId(templateId)
+            }}
+          />
+        )}
+
         {/* Custom Prompt */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Custom Instructions (Optional)
+            {templatePrompt ? "Additional Instructions (Optional)" : "Custom Instructions (Optional)"}
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Add specific instructions to customize the video (e.g., "add slow motion", "bright lighting", "zoom in effect").
-            This will be combined with the template's default prompt.
+            {templatePrompt
+              ? "Add any additional instructions to combine with the template prompt above."
+              : "Add specific instructions to customize the video (e.g., \"add slow motion\", \"bright lighting\", \"zoom in effect\"). This will be combined with the template's default prompt."
+            }
           </p>
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="Enter custom instructions here..."
+            placeholder={templatePrompt ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
             className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>

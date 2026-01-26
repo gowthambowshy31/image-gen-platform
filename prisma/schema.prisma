@@ -323,3 +323,56 @@ model Analytics {
 
   @@index([date])
 }
+
+// Prompt Templates with variables
+model PromptTemplate {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  promptText    String    @db.Text
+  category      String    @default("both") // "image" | "video" | "both"
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  variables     TemplateVariable[]
+  usageHistory  TemplateUsage[]
+}
+
+// Variables defined for each template
+model TemplateVariable {
+  id              String    @id @default(cuid())
+  templateId      String
+  template        PromptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name            String
+  displayName     String
+  type            VariableType @default(TEXT)
+  isRequired      Boolean   @default(true)
+  defaultValue    String?
+  options         String[]
+  autoFillSource  String?
+  order           Int       @default(0)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+enum VariableType {
+  TEXT
+  DROPDOWN
+  AUTO
+}
+
+// Track template usage for analytics
+model TemplateUsage {
+  id              String    @id @default(cuid())
+  templateId      String
+  template        PromptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  productId       String?
+  variableValues  Json
+  generatedPrompt String    @db.Text
+  createdAt       DateTime  @default(now())
+
+  @@index([templateId])
+  @@index([createdAt])
+}

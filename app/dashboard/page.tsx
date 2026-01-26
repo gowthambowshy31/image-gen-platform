@@ -173,6 +173,12 @@ export default function DashboardPage() {
                 Add Product
               </Link>
               <Link
+                href="/templates"
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+              >
+                Prompt Templates
+              </Link>
+              <Link
                 href="/image-types"
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
               >
