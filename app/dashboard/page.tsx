@@ -35,6 +35,65 @@ export default function DashboardPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL")
   const [sourceFilter, setSourceFilter] = useState<string>("ALL")
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null)
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [downloadingBulk, setDownloadingBulk] = useState(false)
+  const [bulkDownloadType, setBulkDownloadType] = useState<'source' | 'generated' | 'all'>('generated')
+
+  // Toggle selection for a single product
+  const toggleProductSelection = (productId: string) => {
+    const newSelected = new Set(selectedProducts)
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId)
+    } else {
+      newSelected.add(productId)
+    }
+    setSelectedProducts(newSelected)
+  }
+
+  // Toggle all visible products
+  const toggleSelectAll = () => {
+    if (selectedProducts.size === filteredProducts.length && filteredProducts.length > 0) {
+      setSelectedProducts(new Set())
+    } else {
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id)))
+    }
+  }
+
+  // Download selected products' images
+  const downloadSelectedImages = async () => {
+    if (selectedProducts.size === 0) return
+
+    setDownloadingBulk(true)
+    try {
+      const response = await fetch('/api/download/zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productIds: Array.from(selectedProducts),
+          imageType: bulkDownloadType
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate ZIP file')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `products-${bulkDownloadType}-images-${new Date().toISOString().split('T')[0]}.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Bulk download failed:', error)
+      alert('Failed to download images')
+    } finally {
+      setDownloadingBulk(false)
+    }
+  }
 
   useEffect(() => {
     loadDashboardData()
@@ -380,13 +439,64 @@ export default function DashboardPage() {
 
         {/* Products Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-900">Products</h2>
+            {/* Bulk Download Controls */}
+            {selectedProducts.size > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">
+                  {selectedProducts.size} selected
+                </span>
+                <select
+                  value={bulkDownloadType}
+                  onChange={(e) => setBulkDownloadType(e.target.value as 'source' | 'generated' | 'all')}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="generated">Generated Images</option>
+                  <option value="source">Source Images</option>
+                  <option value="all">All Images</option>
+                </select>
+                <button
+                  onClick={downloadSelectedImages}
+                  disabled={downloadingBulk}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {downloadingBulk ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Preparing ZIP...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download Selected
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setSelectedProducts(new Set())}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      type="checkbox"
+                      checked={selectedProducts.size === filteredProducts.length && filteredProducts.length > 0}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      title="Select all"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Product
                   </th>
@@ -416,7 +526,7 @@ export default function DashboardPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={9} className="px-6 py-12 text-center">
                       <div className="text-gray-500">
                         <svg
                           className="mx-auto h-12 w-12 text-gray-400"
@@ -441,7 +551,15 @@ export default function DashboardPage() {
                   </tr>
                 ) : (
                   filteredProducts.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-50">
+                  <tr key={product.id} className={`hover:bg-gray-50 ${selectedProducts.has(product.id) ? 'bg-blue-50' : ''}`}>
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.has(product.id)}
+                        onChange={() => toggleProductSelection(product.id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <div className="text-sm font-medium text-gray-900">{product.title}</div>

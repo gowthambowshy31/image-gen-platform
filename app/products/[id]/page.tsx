@@ -5,6 +5,40 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 
+interface SourceImage {
+  id: string
+  amazonImageUrl: string
+  localFilePath: string
+  variant: string
+  width: number
+  height: number
+}
+
+interface GeneratedImage {
+  id: string
+  imageTypeId: string
+  status: string
+  version: number
+  fileName: string
+  filePath: string
+  sourceImageId?: string | null
+  parentImageId?: string | null
+  imageType: {
+    id: string
+    name: string
+  }
+  sourceImage?: {
+    id: string
+    variant: string
+    localFilePath: string
+  } | null
+  parentImage?: {
+    id: string
+    fileName: string
+    version: number
+  } | null
+}
+
 interface Product {
   id: string
   title: string
@@ -12,38 +46,8 @@ interface Product {
   category?: string
   status: string
   metadata?: any
-  sourceImages: Array<{
-    id: string
-    amazonImageUrl: string
-    localFilePath: string
-    variant: string
-    width: number
-    height: number
-  }>
-  images: Array<{
-    id: string
-    imageTypeId: string
-    status: string
-    version: number
-    fileName: string
-    filePath: string
-    sourceImageId?: string | null
-    parentImageId?: string | null
-    imageType: {
-      id: string
-      name: string
-    }
-    sourceImage?: {
-      id: string
-      variant: string
-      localFilePath: string
-    } | null
-    parentImage?: {
-      id: string
-      fileName: string
-      version: number
-    } | null
-  }>
+  sourceImages: SourceImage[]
+  images: GeneratedImage[]
 }
 
 export default function ProductDetailPage() {
@@ -56,6 +60,102 @@ export default function ProductDetailPage() {
   const [selectedImageForRegeneration, setSelectedImageForRegeneration] = useState<string | null>(null)
   const [regeneratePrompt, setRegeneratePrompt] = useState("")
   const [regenerating, setRegenerating] = useState(false)
+  const [downloadingAll, setDownloadingAll] = useState(false)
+  const [imageView, setImageView] = useState<'grid' | 'table'>('grid')
+
+  // Download a single image using the proxy API to avoid CORS issues
+  const downloadImage = async (imageUrl: string, fileName: string) => {
+    try {
+      // Use the proxy endpoint to download external images
+      const proxyUrl = `/api/download/image?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(fileName)}`
+      const link = document.createElement('a')
+      link.href = proxyUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error('Download failed:', error)
+      alert('Failed to download image')
+    }
+  }
+
+  // Download all generated images as ZIP
+  const downloadAllGeneratedImages = async () => {
+    if (!product || product.images.length === 0) return
+
+    setDownloadingAll(true)
+    try {
+      const response = await fetch('/api/download/zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: product.id,
+          imageType: 'generated'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate ZIP file')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${product.asin || product.id}-generated-images.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download all failed:', error)
+      alert('Failed to download images')
+    } finally {
+      setDownloadingAll(false)
+    }
+  }
+
+  // Download all source images as ZIP
+  const downloadAllSourceImages = async () => {
+    if (!product || product.sourceImages.length === 0) return
+
+    setDownloadingAll(true)
+    try {
+      const response = await fetch('/api/download/zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: product.id,
+          imageType: 'source'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate ZIP file')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${product.asin || product.id}-source-images.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download all failed:', error)
+      alert('Failed to download images')
+    } finally {
+      setDownloadingAll(false)
+    }
+  }
+
+  // Get the display URL for a generated image
+  const getImageUrl = (image: GeneratedImage) => {
+    return image.filePath?.startsWith('http') ? image.filePath : `/uploads/${image.fileName}`
+  }
 
   useEffect(() => {
     loadProduct()
@@ -203,19 +303,51 @@ export default function ProductDetailPage() {
 
         {/* Source Images */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Source Images from Amazon ({product.sourceImages?.length || 0})
-          </h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Source Images from Amazon ({product.sourceImages?.length || 0})
+            </h2>
+            {product.sourceImages && product.sourceImages.length > 0 && (
+              <button
+                onClick={downloadAllSourceImages}
+                disabled={downloadingAll}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+              >
+                {downloadingAll ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Preparing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download All
+                  </>
+                )}
+              </button>
+            )}
+          </div>
           {product.sourceImages && product.sourceImages.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {product.sourceImages.map((image) => (
-                <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition">
+                <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition group">
                   <div className="relative aspect-square bg-gray-100 rounded">
                     <img
                       src={image.amazonImageUrl}
                       alt={`${product.title} - ${image.variant}`}
                       className="object-contain w-full h-full rounded"
                     />
+                    <button
+                      onClick={() => downloadImage(image.amazonImageUrl, `${product.asin || product.id}-${image.variant}.jpg`)}
+                      className="absolute top-2 right-2 bg-gray-800 bg-opacity-75 text-white p-1.5 rounded opacity-0 group-hover:opacity-100 transition hover:bg-opacity-100"
+                      title="Download image"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    </button>
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
                     <p className="font-medium">{image.variant}</p>
@@ -231,60 +363,209 @@ export default function ProductDetailPage() {
 
         {/* Generated Images */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Generated Images ({product.images?.length || 0})
-          </h2>
-          {product.images && product.images.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {product.images.map((image) => (
-                <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition group">
-                  <div className="relative aspect-square bg-gray-100 rounded">
-                    <img
-                      src={image.filePath?.startsWith('http') ? image.filePath : `/uploads/${image.fileName}`}
-                      alt={`${product.title} - ${image.imageType.name}`}
-                      className="object-contain w-full h-full rounded"
-                    />
-                    <button
-                      onClick={() => openRegenerateModal(image.id, image.imageType.name)}
-                      className="absolute top-2 right-2 bg-blue-600 text-white px-3 py-1 rounded text-xs font-semibold opacity-0 group-hover:opacity-100 transition hover:bg-blue-700"
-                    >
-                      Regenerate
-                    </button>
-                  </div>
-                  <div className="mt-2 text-xs">
-                    <p className="font-medium text-gray-700 mb-1">{image.imageType.name}</p>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                      image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                      image.status === 'COMPLETED' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {image.status}
-                    </span>
-                    <p className="text-gray-500 mt-1">Version {image.version}</p>
-
-                    {/* Generation History Indicators */}
-                    {image.sourceImage && (
-                      <div className="mt-2 flex items-center gap-1 text-purple-600">
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                          <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
-                        </svg>
-                        <span className="text-[10px]">From {image.sourceImage.variant}</span>
-                      </div>
-                    )}
-                    {image.parentImage && (
-                      <div className="mt-1 flex items-center gap-1 text-orange-600">
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
-                        </svg>
-                        <span className="text-[10px]">Regenerated v{image.parentImage.version}</span>
-                      </div>
-                    )}
-                  </div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Generated Images ({product.images?.length || 0})
+            </h2>
+            {product.images && product.images.length > 0 && (
+              <div className="flex items-center gap-3">
+                {/* View Toggle */}
+                <div className="flex items-center border rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setImageView('grid')}
+                    className={`px-3 py-1.5 text-sm flex items-center gap-1 ${
+                      imageView === 'grid' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title="Grid view"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setImageView('table')}
+                    className={`px-3 py-1.5 text-sm flex items-center gap-1 ${
+                      imageView === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title="Table view"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </button>
                 </div>
-              ))}
-            </div>
+                {/* Download All Button */}
+                <button
+                  onClick={downloadAllGeneratedImages}
+                  disabled={downloadingAll}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {downloadingAll ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Preparing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download All
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+          {product.images && product.images.length > 0 ? (
+            imageView === 'grid' ? (
+              /* Grid View */
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {product.images.map((image) => (
+                  <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition group">
+                    <div className="relative aspect-square bg-gray-100 rounded">
+                      <img
+                        src={getImageUrl(image)}
+                        alt={`${product.title} - ${image.imageType.name}`}
+                        className="object-contain w-full h-full rounded"
+                      />
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          onClick={() => downloadImage(getImageUrl(image), image.fileName)}
+                          className="bg-gray-800 bg-opacity-75 text-white p-1.5 rounded hover:bg-opacity-100"
+                          title="Download image"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => openRegenerateModal(image.id, image.imageType.name)}
+                          className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-blue-700"
+                        >
+                          Regenerate
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs">
+                      <p className="font-medium text-gray-700 mb-1">{image.imageType.name}</p>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                        image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                        image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                        image.status === 'COMPLETED' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {image.status}
+                      </span>
+                      <p className="text-gray-500 mt-1">Version {image.version}</p>
+
+                      {/* Generation History Indicators */}
+                      {image.sourceImage && (
+                        <div className="mt-2 flex items-center gap-1 text-purple-600">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
+                          </svg>
+                          <span className="text-[10px]">From {image.sourceImage.variant}</span>
+                        </div>
+                      )}
+                      {image.parentImage && (
+                        <div className="mt-1 flex items-center gap-1 text-orange-600">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
+                          </svg>
+                          <span className="text-[10px]">Regenerated v{image.parentImage.version}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Table View */
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filename</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {product.images.map((image) => (
+                      <tr key={image.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden">
+                            <img
+                              src={getImageUrl(image)}
+                              alt={image.imageType.name}
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm text-gray-900 font-medium truncate max-w-[200px]" title={image.fileName}>
+                            {image.fileName}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm text-gray-700">{image.imageType.name}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                            image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                            image.status === 'COMPLETED' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {image.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm text-gray-700">v{image.version}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          {image.sourceImage ? (
+                            <span className="text-xs text-purple-600">{image.sourceImage.variant}</span>
+                          ) : image.parentImage ? (
+                            <span className="text-xs text-orange-600">Regen v{image.parentImage.version}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => downloadImage(getImageUrl(image), image.fileName)}
+                              className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                              title="Download"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => openRegenerateModal(image.id, image.imageType.name)}
+                              className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                              title="Regenerate"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-500 mb-4">No generated images yet</p>

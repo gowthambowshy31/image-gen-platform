@@ -189,9 +189,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate unique filename
-    const timestamp = Date.now()
-    const fileName = `${product.id}_${imageType.name}_v${version}_${timestamp}.png`
+    // Generate meaningful filename: ASIN_ImageType_v1_001.png
+    // Sanitize image type name for filename (remove special chars, replace spaces with hyphens)
+    const sanitizedImageTypeName = imageType.name
+      .replace(/[^a-zA-Z0-9\s-]/g, '')  // Remove special characters
+      .replace(/\s+/g, '-')              // Replace spaces with hyphens
+      .toLowerCase()
+
+    // Use ASIN if available, otherwise fall back to a shortened product ID
+    const productIdentifier = product.asin || product.id.slice(0, 8)
+
+    // Create a sequential number based on timestamp for uniqueness
+    const sequenceNum = String(Date.now()).slice(-4)
+
+    const fileName = `${productIdentifier}_${sanitizedImageTypeName}_v${version}_${sequenceNum}.png`
     const uploadDir = process.env.UPLOAD_DIR || './public/uploads'
     const outputPath = path.join(process.cwd(), uploadDir, fileName)
 
