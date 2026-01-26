@@ -53,7 +53,7 @@ export default function NewTemplatePage() {
     const detectedVars = extractVariables(promptText)
     const existingVarMap = new Map(variables.map(v => [v.name, v]))
 
-    const newVariables = detectedVars.map((varName, index) => {
+    const newVariables: Variable[] = detectedVars.map((varName, index) => {
       if (existingVarMap.has(varName)) {
         return existingVarMap.get(varName)!
       }
@@ -67,10 +67,10 @@ export default function NewTemplatePage() {
         id: `new-${Date.now()}-${index}`,
         name: varName,
         displayName: varName.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
-        type: isAuto ? "AUTO" : "TEXT" as const,
+        type: (isAuto ? "AUTO" : "TEXT") as "TEXT" | "DROPDOWN" | "AUTO",
         isRequired: true,
         defaultValue: "",
-        options: [],
+        options: [] as string[],
         autoFillSource: autoSource,
         order: index
       }
