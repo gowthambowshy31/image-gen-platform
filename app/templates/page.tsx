@@ -26,12 +26,23 @@ interface Template {
   }
 }
 
+interface Product {
+  id: string
+  title: string
+  asin?: string
+}
+
 export default function TemplatesPage() {
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [showProductSelector, setShowProductSelector] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productsLoading, setProductsLoading] = useState(false)
+  const [productSearch, setProductSearch] = useState("")
 
   useEffect(() => {
     loadTemplates()
@@ -79,6 +90,43 @@ export default function TemplatesPage() {
       console.error("Error deleting template:", error)
     }
   }
+
+  const handleUseTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId)
+    setShowProductSelector(true)
+    loadProducts()
+  }
+
+  const loadProducts = async () => {
+    setProductsLoading(true)
+    try {
+      const response = await fetch("/api/products")
+      if (response.ok) {
+        const data = await response.json()
+        setProducts(data)
+      }
+    } catch (error) {
+      console.error("Error loading products:", error)
+    } finally {
+      setProductsLoading(false)
+    }
+  }
+
+  const handleProductSelect = (productId: string) => {
+    if (selectedTemplateId) {
+      const template = templates.find(t => t.id === selectedTemplateId)
+      if (template) {
+        // Navigate to generate page with template ID
+        const category = template.category === "both" ? "image" : template.category
+        router.push(`/products/${productId}/generate${category === "video" ? "-video" : ""}?templateId=${selectedTemplateId}`)
+      }
+    }
+  }
+
+  const filteredProducts = products.filter(p =>
+    p.title.toLowerCase().includes(productSearch.toLowerCase()) ||
+    (p.asin && p.asin.toLowerCase().includes(productSearch.toLowerCase()))
+  )
 
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -237,25 +285,33 @@ export default function TemplatesPage() {
                   </p>
 
                   {/* Actions */}
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Link
-                      href={`/templates/${template.id}/edit`}
-                      className="flex-1 px-3 py-2 text-center text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                    >
-                      Edit
-                    </Link>
+                  <div className="flex flex-col gap-2 pt-4 border-t">
                     <button
-                      onClick={() => handleDuplicate(template.id)}
-                      className="flex-1 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                      onClick={() => handleUseTemplate(template.id)}
+                      className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
                     >
-                      Duplicate
+                      Use Template
                     </button>
-                    <button
-                      onClick={() => handleDelete(template.id, template.name)}
-                      className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex gap-2">
+                      <Link
+                        href={`/templates/${template.id}/edit`}
+                        className="flex-1 px-3 py-2 text-center text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                      >
+                        Edit
+                      </Link>
+                      <button
+                        onClick={() => handleDuplicate(template.id)}
+                        className="flex-1 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        onClick={() => handleDelete(template.id, template.name)}
+                        className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -273,6 +329,68 @@ export default function TemplatesPage() {
           </ul>
         </div>
       </div>
+
+      {/* Product Selector Modal */}
+      {showProductSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">Select a Product</h2>
+                <button
+                  onClick={() => {
+                    setShowProductSelector(false)
+                    setSelectedTemplateId(null)
+                    setProductSearch("")
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                Choose a product to generate images/videos with this template
+              </p>
+            </div>
+            <div className="p-6 flex-1 overflow-hidden flex flex-col">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div className="flex-1 overflow-y-auto">
+                {productsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-gray-600">Loading products...</p>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No products found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredProducts.map((product) => (
+                      <button
+                        key={product.id}
+                        onClick={() => handleProductSelect(product.id)}
+                        className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition"
+                      >
+                        <h3 className="font-semibold text-gray-900">{product.title}</h3>
+                        {product.asin && (
+                          <p className="text-sm text-gray-500 mt-1">ASIN: {product.asin}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

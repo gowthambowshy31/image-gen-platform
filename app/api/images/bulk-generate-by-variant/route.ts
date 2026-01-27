@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
       data: {
         productIds: eligibleProducts.map(p => p.id),
         imageTypeIds: [validated.imageTypeId],
+        variant: validated.variant,
+        promptUsed: validated.customPrompt || imageType.defaultPrompt,
         status: "PROCESSING",
         totalImages: eligibleProducts.length,
         startedAt: new Date()

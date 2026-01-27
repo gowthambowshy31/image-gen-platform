@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import ImageSelector from "@/app/components/ImageSelector"
 import TemplateSelector from "@/app/components/TemplateSelector"
@@ -47,6 +47,7 @@ interface Product {
 export default function GenerateImagesPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [product, setProduct] = useState<Product | null>(null)
   const [imageTypes, setImageTypes] = useState<ImageType[]>([])
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
@@ -55,13 +56,19 @@ export default function GenerateImagesPage() {
   const [customPrompt, setCustomPrompt] = useState<string>("")
   const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState<string>("")
 
   useEffect(() => {
     loadData()
-  }, [params.id])
+    // Get template ID from URL query params
+    const templateId = searchParams.get("templateId")
+    if (templateId) {
+      setInitialTemplateId(templateId)
+    }
+  }, [params.id, searchParams])
 
   const loadData = async () => {
     try {
@@ -288,6 +295,7 @@ export default function GenerateImagesPage() {
               category: product.category,
               asin: product.asin
             }}
+            initialTemplateId={initialTemplateId}
             onPromptGenerated={(prompt, templateId) => {
               setTemplatePrompt(prompt)
               setSelectedTemplateId(templateId)

@@ -272,6 +272,8 @@ model GenerationJob {
   id              String    @id @default(cuid())
   productIds      String[]
   imageTypeIds    String[]
+  variant         String?
+  promptUsed      String?   @db.Text
   status          JobStatus @default(QUEUED)
   priority        Int       @default(0)
   totalImages     Int       @default(0)
@@ -284,6 +286,7 @@ model GenerationJob {
   updatedAt       DateTime  @updatedAt
 
   @@index([status, priority])
+  @@index([createdAt])
 }
 
 enum JobStatus {

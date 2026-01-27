@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import ImageSelector from '@/app/components/ImageSelector'
 import TemplateSelector from '@/app/components/TemplateSelector'
@@ -63,6 +63,7 @@ interface Video {
 export default function GenerateVideoPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [product, setProduct] = useState<Product | null>(null)
   const [videoTypes, setVideoTypes] = useState<VideoType[]>([])
   const [videos, setVideos] = useState<Video[]>([])
@@ -72,6 +73,7 @@ export default function GenerateVideoPage() {
   const [customPrompt, setCustomPrompt] = useState<string>('')
   const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null)
   const [aspectRatio, setAspectRatio] = useState('16:9')
   const [duration, setDuration] = useState(4)
   const [resolution, setResolution] = useState('720p')
@@ -81,7 +83,12 @@ export default function GenerateVideoPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+    // Get template ID from URL query params
+    const templateId = searchParams.get("templateId")
+    if (templateId) {
+      setInitialTemplateId(templateId)
+    }
+  }, [searchParams])
 
   const loadData = async () => {
     try {
@@ -353,6 +360,7 @@ export default function GenerateVideoPage() {
               category: product.category,
               asin: product.asin
             }}
+            initialTemplateId={initialTemplateId}
             onPromptGenerated={(prompt, templateId) => {
               setTemplatePrompt(prompt)
               setSelectedTemplateId(templateId)

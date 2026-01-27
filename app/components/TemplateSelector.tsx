@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 
 interface TemplateVariable {
   id: string
@@ -33,19 +34,40 @@ interface Product {
 interface TemplateSelectorProps {
   category: "image" | "video" | "both"
   product?: Product
+  initialTemplateId?: string | null
   onPromptGenerated: (prompt: string | null, templateId: string | null) => void
 }
 
-export default function TemplateSelector({ category, product, onPromptGenerated }: TemplateSelectorProps) {
+export default function TemplateSelector({ category, product, initialTemplateId, onPromptGenerated }: TemplateSelectorProps) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [variableValues, setVariableValues] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     loadTemplates()
   }, [category])
+
+  // Pre-select template when initialTemplateId is provided and templates are loaded
+  useEffect(() => {
+    if (initialTemplateId && templates.length > 0 && !selectedTemplate) {
+      const template = templates.find(t => t.id === initialTemplateId)
+      if (template) {
+        setSelectedTemplate(template)
+        // Initialize with default values
+        const defaults: Record<string, string> = {}
+        for (const variable of template.variables) {
+          if (variable.defaultValue) {
+            defaults[variable.name] = variable.defaultValue
+          }
+        }
+        setVariableValues(defaults)
+        setExpanded(true)
+      }
+    }
+  }, [initialTemplateId, templates, selectedTemplate])
 
   useEffect(() => {
     // Auto-fill product values when template or product changes
@@ -74,10 +96,17 @@ export default function TemplateSelector({ category, product, onPromptGenerated 
     }
   }, [variableValues, selectedTemplate])
 
-  const loadTemplates = async () => {
+  const loadTemplates = async (showRefreshing = false) => {
     try {
+      if (showRefreshing) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
       const categoryParam = category === "both" ? "" : `?category=${category}`
-      const response = await fetch(`/api/templates${categoryParam}`)
+      const separator = categoryParam ? "&" : "?"
+      // Add cache-busting parameter to ensure fresh data
+      const response = await fetch(`/api/templates${categoryParam}${separator}_t=${Date.now()}`)
       if (response.ok) {
         const data = await response.json()
         // Filter templates that match category or are "both"
@@ -85,11 +114,28 @@ export default function TemplateSelector({ category, product, onPromptGenerated 
           t.category === "both" || t.category === category
         )
         setTemplates(filtered)
+        
+        // If we had a selected template, try to find it again (in case it was updated)
+        if (selectedTemplate) {
+          const updatedTemplate = filtered.find((t: Template) => t.id === selectedTemplate.id)
+          if (updatedTemplate) {
+            setSelectedTemplate(updatedTemplate)
+            // Re-initialize variable values with defaults
+            const defaults: Record<string, string> = {}
+            for (const variable of updatedTemplate.variables) {
+              if (variable.defaultValue) {
+                defaults[variable.name] = variable.defaultValue
+              }
+            }
+            setVariableValues(prev => ({ ...defaults, ...prev }))
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading templates:", error)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -150,14 +196,40 @@ export default function TemplateSelector({ category, product, onPromptGenerated 
         <h2 className="text-lg font-semibold text-gray-900">
           Use Prompt Template (Optional)
         </h2>
-        {selectedTemplate && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => handleTemplateSelect(null)}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            onClick={() => loadTemplates(true)}
+            disabled={refreshing}
+            className="text-sm text-gray-600 hover:text-gray-700 disabled:opacity-50"
+            title="Refresh templates"
           >
-            Clear template
+            {refreshing ? "⟳" : "↻"} Refresh
           </button>
-        )}
+          {selectedTemplate && (
+            <>
+              <Link
+                href={`/templates/${selectedTemplate.id}/edit`}
+                target="_blank"
+                className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                Edit Template
+              </Link>
+              <button
+                onClick={() => handleTemplateSelect(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Clear template
+              </button>
+            </>
+          )}
+          <Link
+            href="/templates"
+            target="_blank"
+            className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium"
+          >
+            Manage Templates →
+          </Link>
+        </div>
       </div>
 
       {/* Template Selector */}
@@ -192,6 +264,39 @@ export default function TemplateSelector({ category, product, onPromptGenerated 
               {template.name}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Info about templates */}
+      {templates.length === 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-blue-800">
+            No templates available.{" "}
+            <Link
+              href="/templates/new"
+              target="_blank"
+              className="font-medium hover:underline"
+            >
+              Create your first template →
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {/* Info about shared templates */}
+      {templates.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 mb-4">
+          <p className="text-xs text-gray-600">
+            💡 Templates are shared across all generation pages. Create and manage them in{" "}
+            <Link
+              href="/templates"
+              target="_blank"
+              className="text-blue-600 hover:underline"
+            >
+              Templates
+            </Link>
+            .
+          </p>
         </div>
       )}
 
