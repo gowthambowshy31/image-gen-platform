@@ -232,6 +232,12 @@ export default function DashboardPage() {
                 Add Product
               </Link>
               <Link
+                href="/bulk-generate"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              >
+                Bulk Generate
+              </Link>
+              <Link
                 href="/templates"
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
               >

@@ -84,7 +84,7 @@ export class AmazonSPService {
           if (imageGroup.images && Array.isArray(imageGroup.images)) {
             for (const img of imageGroup.images) {
               images.push({
-                variant: imageGroup.variant || "MAIN",
+                variant: img.variant || "MAIN",
                 link: img.link,
                 height: img.height || 0,
                 width: img.width || 0

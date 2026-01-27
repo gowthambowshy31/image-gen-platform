@@ -56,7 +56,13 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(npm run build:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(ssh:*)",
+      "Bash(node check-images.js:*)",
+      "Bash(icacls image-gen-key.pem /grant:r \"$env:USERNAME:\\(R\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(git diff:*)",
+      "Bash(git push:*)"
     ]
   }
 }

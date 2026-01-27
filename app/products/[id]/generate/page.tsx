@@ -241,7 +241,7 @@ export default function GenerateImagesPage() {
             description="Choose a specific Amazon product image to use as the base for generation, or leave unselected to use the default."
             images={product.sourceImages.map(img => ({
               id: img.id,
-              url: img.localFilePath,
+              url: img.localFilePath || img.amazonImageUrl,
               label: img.variant,
               width: img.width,
               height: img.height
