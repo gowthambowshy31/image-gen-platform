@@ -25,11 +25,12 @@ export async function GET(request: NextRequest) {
       prisma.generationJob.count({ where })
     ])
 
-    // Resolve product names and image type names for each job
+    // Resolve product names, image type names, and template names for each job
     const allProductIds = [...new Set(jobs.flatMap(j => j.productIds))]
     const allImageTypeIds = [...new Set(jobs.flatMap(j => j.imageTypeIds))]
+    const allTemplateIds = [...new Set(jobs.flatMap(j => j.templateIds || []))]
 
-    const [products, imageTypes] = await Promise.all([
+    const [products, imageTypes, templates] = await Promise.all([
       prisma.product.findMany({
         where: { id: { in: allProductIds } },
         select: { id: true, title: true, asin: true }
@@ -37,23 +38,39 @@ export async function GET(request: NextRequest) {
       prisma.imageType.findMany({
         where: { id: { in: allImageTypeIds } },
         select: { id: true, name: true }
-      })
+      }),
+      allTemplateIds.length > 0
+        ? prisma.promptTemplate.findMany({
+            where: { id: { in: allTemplateIds } },
+            select: { id: true, name: true }
+          })
+        : Promise.resolve([])
     ])
 
     const productMap = new Map(products.map(p => [p.id, p]))
     const imageTypeMap = new Map(imageTypes.map(t => [t.id, t]))
+    const templateMap = new Map(templates.map(t => [t.id, t]))
 
-    const enrichedJobs = jobs.map(job => ({
-      ...job,
-      productNames: job.productIds
-        .map(id => productMap.get(id))
+    const enrichedJobs = jobs.map(job => {
+      const templateNames = (job.templateIds || [])
+        .map(id => templateMap.get(id))
         .filter(Boolean)
-        .map(p => p!.title),
-      imageTypeNames: job.imageTypeIds
+        .map(t => t!.name)
+      const imageTypeNames = job.imageTypeIds
         .map(id => imageTypeMap.get(id))
         .filter(Boolean)
         .map(t => t!.name)
-    }))
+
+      return {
+        ...job,
+        productNames: job.productIds
+          .map(id => productMap.get(id))
+          .filter(Boolean)
+          .map(p => p!.title),
+        imageTypeNames: templateNames.length > 0 ? templateNames : imageTypeNames,
+        templateNames
+      }
+    })
 
     return NextResponse.json({
       jobs: enrichedJobs,

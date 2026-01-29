@@ -130,8 +130,11 @@ model GeneratedImage {
   id              String    @id @default(cuid())
   productId       String
   product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  imageTypeId     String
-  imageType       ImageType @relation(fields: [imageTypeId], references: [id])
+  imageTypeId     String?
+  imageType       ImageType? @relation(fields: [imageTypeId], references: [id])
+  templateId      String?
+  template        PromptTemplate? @relation(fields: [templateId], references: [id])
+  templateName    String?
   sourceImageId   String?
   sourceImage     SourceImage? @relation(fields: [sourceImageId], references: [id])
   version         Int       @default(1)
@@ -157,6 +160,7 @@ model GeneratedImage {
   generatedVideos GeneratedVideo[]
 
   @@index([productId, imageTypeId])
+  @@index([productId, templateId])
   @@index([status])
 }
 
@@ -272,6 +276,7 @@ model GenerationJob {
   id              String    @id @default(cuid())
   productIds      String[]
   imageTypeIds    String[]
+  templateIds     String[]  @default([])
   variant         String?
   promptUsed      String?   @db.Text
   status          JobStatus @default(QUEUED)
@@ -335,11 +340,13 @@ model PromptTemplate {
   promptText    String    @db.Text
   category      String    @default("both") // "image" | "video" | "both"
   isActive      Boolean   @default(true)
+  order         Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  variables     TemplateVariable[]
-  usageHistory  TemplateUsage[]
+  variables       TemplateVariable[]
+  usageHistory    TemplateUsage[]
+  generatedImages GeneratedImage[]
 }
 
 // Variables defined for each template

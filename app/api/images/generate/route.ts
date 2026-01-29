@@ -31,12 +31,17 @@ async function downloadImageToTemp(url: string): Promise<string | null> {
 
 const generateImageSchema = z.object({
   productId: z.string(),
-  imageTypeId: z.string(),
+  imageTypeId: z.string().optional(),
+  templateId: z.string().optional(),
+  renderedPrompt: z.string().optional(),
   sourceImageId: z.string().optional(),
   generatedImageId: z.string().optional(),
   customPrompt: z.string().optional(),
   parentImageId: z.string().optional()
-})
+}).refine(
+  data => data.imageTypeId || data.templateId || data.renderedPrompt || data.customPrompt,
+  { message: "Must provide imageTypeId, templateId, renderedPrompt, or customPrompt" }
+)
 
 // POST /api/images/generate - Generate a single image
 export async function POST(request: NextRequest) {
@@ -61,47 +66,81 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
-    // Get image type
-    const imageType = await prisma.imageType.findUnique({
-      where: { id: validated.imageTypeId }
-    })
+    // Resolve prompt source: template flow vs legacy imageType flow
+    let imageType: any = null
+    let template: any = null
+    let displayName = 'Generated Image'
+    let promptToUse = ''
 
-    if (!imageType) {
-      return NextResponse.json({ error: "Image type not found" }, { status: 404 })
-    }
-
-    // Check for custom prompt override
-    let promptToUse = validated.customPrompt || imageType.defaultPrompt
-
-    // Check if there's a product-specific override
-    if (!validated.customPrompt) {
-      const override = await prisma.promptOverride.findUnique({
-        where: {
-          productId_imageTypeId: {
-            productId: validated.productId,
-            imageTypeId: validated.imageTypeId
-          }
-        }
+    if (validated.templateId) {
+      // New template flow
+      template = await prisma.promptTemplate.findUnique({
+        where: { id: validated.templateId },
+        include: { variables: true }
       })
 
-      if (override) {
-        promptToUse = override.customPrompt
+      if (!template) {
+        return NextResponse.json({ error: "Template not found" }, { status: 404 })
       }
+
+      displayName = template.name
+      // Use rendered prompt from frontend, or customPrompt, or template's raw promptText
+      promptToUse = validated.renderedPrompt || validated.customPrompt || template.promptText
+    } else if (validated.imageTypeId) {
+      // Legacy imageType flow
+      imageType = await prisma.imageType.findUnique({
+        where: { id: validated.imageTypeId }
+      })
+
+      if (!imageType) {
+        return NextResponse.json({ error: "Image type not found" }, { status: 404 })
+      }
+
+      displayName = imageType.name
+      promptToUse = validated.customPrompt || imageType.defaultPrompt
+
+      // Check if there's a product-specific override
+      if (!validated.customPrompt) {
+        const override = await prisma.promptOverride.findUnique({
+          where: {
+            productId_imageTypeId: {
+              productId: validated.productId,
+              imageTypeId: validated.imageTypeId
+            }
+          }
+        })
+
+        if (override) {
+          promptToUse = override.customPrompt
+        }
+      }
+    } else {
+      // Fallback: just customPrompt or renderedPrompt
+      promptToUse = validated.renderedPrompt || validated.customPrompt || ''
+      displayName = 'Custom'
     }
 
-    // Replace template variables in prompt
+    // Replace template variables in prompt (both single and double brace syntax)
     promptToUse = promptToUse
+      .replace(/\{\{product_name\}\}/g, product.title)
+      .replace(/\{\{product_title\}\}/g, product.title)
+      .replace(/\{\{category\}\}/g, product.category || '')
+      .replace(/\{\{asin\}\}/g, product.asin || '')
       .replace(/\{product_name\}/g, product.title)
       .replace(/\{product_title\}/g, product.title)
       .replace(/\{category\}/g, product.category || '')
       .replace(/\{asin\}/g, product.asin || '')
 
     // Get version number
+    const versionWhere: any = { productId: validated.productId }
+    if (validated.templateId) {
+      versionWhere.templateId = validated.templateId
+    } else if (validated.imageTypeId) {
+      versionWhere.imageTypeId = validated.imageTypeId
+    }
+
     const existingImages = await prisma.generatedImage.findMany({
-      where: {
-        productId: validated.productId,
-        imageTypeId: validated.imageTypeId
-      },
+      where: versionWhere,
       orderBy: {
         version: 'desc'
       },
@@ -189,9 +228,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate meaningful filename: ASIN_ImageType_v1_001.png
-    // Sanitize image type name for filename (remove special chars, replace spaces with hyphens)
-    const sanitizedImageTypeName = imageType.name
+    // Generate meaningful filename: ASIN_TemplateName_v1_001.png
+    // Sanitize display name for filename (remove special chars, replace spaces with hyphens)
+    const sanitizedImageTypeName = displayName
       .replace(/[^a-zA-Z0-9\s-]/g, '')  // Remove special characters
       .replace(/\s+/g, '-')              // Replace spaces with hyphens
       .toLowerCase()
@@ -218,7 +257,9 @@ export async function POST(request: NextRequest) {
     const imageRecord = await prisma.generatedImage.create({
       data: {
         productId: validated.productId,
-        imageTypeId: validated.imageTypeId,
+        imageTypeId: validated.imageTypeId || null,
+        templateId: validated.templateId || null,
+        templateName: template?.name || imageType?.name || displayName,
         sourceImageId,
         version,
         status: 'GENERATING',
@@ -246,10 +287,10 @@ export async function POST(request: NextRequest) {
       category: product.category,
       asin: product.asin
     })
-    console.log('🖼️  Image Type:', {
-      id: imageType.id,
-      name: imageType.name,
-      description: imageType.description
+    console.log('🖼️  Template/Type:', {
+      id: template?.id || imageType?.id,
+      name: displayName,
+      source: template ? 'PromptTemplate' : imageType ? 'ImageType' : 'Custom'
     })
     console.log('📝 Prompt being sent to Gemini:')
     console.log('---')
@@ -346,6 +387,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         imageType: true,
+        template: true,
         product: true
       }
     })
@@ -361,7 +403,8 @@ export async function POST(request: NextRequest) {
           metadata: {
             productId: product.id,
             productTitle: product.title,
-            imageType: imageType.name,
+            imageType: displayName,
+            templateId: template?.id || null,
             version
           }
         }

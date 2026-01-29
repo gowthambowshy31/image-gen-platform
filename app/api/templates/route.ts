@@ -18,6 +18,7 @@ const createTemplateSchema = z.object({
   description: z.string().optional(),
   promptText: z.string().min(1),
   category: z.enum(["image", "video", "both"]).default("both"),
+  order: z.number().int().min(0).default(0),
   variables: z.array(variableSchema).default([])
 })
 
@@ -30,7 +31,9 @@ export async function GET(request: NextRequest) {
 
     const templates = await prisma.promptTemplate.findMany({
       where: {
-        ...(category && category !== "all" ? { category } : {}),
+        ...(category && category !== "all"
+          ? { OR: [{ category }, { category: "both" }] }
+          : {}),
         ...(!includeInactive ? { isActive: true } : {})
       },
       include: {
@@ -41,7 +44,7 @@ export async function GET(request: NextRequest) {
           select: { usageHistory: true }
         }
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: [{ order: "asc" }, { updatedAt: "desc" }]
     })
 
     return NextResponse.json(templates)
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest) {
         description: validated.description,
         promptText: validated.promptText,
         category: validated.category,
+        order: validated.order,
         variables: {
           create: validated.variables.map((v, index) => ({
             name: v.name,

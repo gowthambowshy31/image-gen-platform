@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import TemplateSelector from "@/app/components/TemplateSelector"
+import TemplateSelector, { TemplateSelection } from "@/app/components/TemplateSelector"
 
 interface SourceImage {
   id: string
@@ -27,13 +27,6 @@ interface Product {
   }
 }
 
-interface ImageType {
-  id: string
-  name: string
-  description: string
-  defaultPrompt: string
-}
-
 interface VariantSummary {
   variant: string
   count: number
@@ -54,6 +47,7 @@ interface HistoryJob {
   id: string
   productIds: string[]
   imageTypeIds: string[]
+  templateIds: string[]
   variant: string | null
   promptUsed: string | null
   status: string
@@ -66,6 +60,7 @@ interface HistoryJob {
   createdAt: string
   productNames: string[]
   imageTypeNames: string[]
+  templateNames: string[]
 }
 
 interface JobImage {
@@ -75,7 +70,9 @@ interface JobImage {
   status: string
   version: number
   product: { id: string; title: string; asin: string | null }
-  imageType: { id: string; name: string }
+  imageType?: { id: string; name: string } | null
+  template?: { id: string; name: string } | null
+  templateName?: string | null
   createdAt: string
 }
 
@@ -85,15 +82,12 @@ export default function BulkGeneratePage() {
 
   // Data
   const [products, setProducts] = useState<Product[]>([])
-  const [imageTypes, setImageTypes] = useState<ImageType[]>([])
   const [variantSummary, setVariantSummary] = useState<VariantSummary[]>([])
 
   // Selection state
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [selectedVariant, setSelectedVariant] = useState<string>("")
-  const [selectedImageTypeId, setSelectedImageTypeId] = useState<string>("")
-  const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [templateSelection, setTemplateSelection] = useState<TemplateSelection | null>(null)
   const [customPrompt, setCustomPrompt] = useState<string>("")
 
   // UI state
@@ -148,14 +142,12 @@ export default function BulkGeneratePage() {
 
   const loadData = async () => {
     try {
-      const [productsRes, typesRes, variantsRes] = await Promise.all([
+      const [productsRes, variantsRes] = await Promise.all([
         fetch("/api/products"),
-        fetch("/api/image-types"),
         fetch("/api/products/variants-summary")
       ])
 
       if (productsRes.ok) setProducts(await productsRes.json())
-      if (typesRes.ok) setImageTypes(await typesRes.json())
       if (variantsRes.ok) {
         const data = await variantsRes.json()
         setVariantSummary(data.variants)
@@ -253,13 +245,15 @@ export default function BulkGeneratePage() {
   }, [products, selectedProducts])
 
   const handleGenerate = async () => {
-    if (selectedProducts.size === 0 || !selectedVariant || !selectedImageTypeId) return
+    if (selectedProducts.size === 0 || !selectedVariant || !templateSelection) return
 
     setGenerating(true)
     setJob(null)
 
     try {
-      const finalPrompt = [templatePrompt, customPrompt.trim()].filter(Boolean).join("\n\n")
+      const renderedPrompt = customPrompt.trim()
+        ? templateSelection.renderedPrompt + "\n\n" + customPrompt.trim()
+        : templateSelection.renderedPrompt
 
       const res = await fetch("/api/images/bulk-generate-by-variant", {
         method: "POST",
@@ -267,9 +261,8 @@ export default function BulkGeneratePage() {
         body: JSON.stringify({
           productIds: Array.from(selectedProducts),
           variant: selectedVariant,
-          imageTypeId: selectedImageTypeId,
-          customPrompt: finalPrompt || undefined,
-          templateId: selectedTemplateId || undefined
+          templateId: templateSelection.templateId,
+          renderedPrompt
         })
       })
 
@@ -570,7 +563,7 @@ export default function BulkGeneratePage() {
                         }`}
                       >
                         <img
-                          src={item.image.localFilePath || item.image.amazonImageUrl}
+                          src={item.image.localFilePath?.startsWith('http') ? item.image.localFilePath : item.image.localFilePath ? `/api${item.image.localFilePath}` : item.image.amazonImageUrl}
                           alt={item.title}
                           className={`w-full h-24 object-contain transition-all ${
                             item.selected ? "" : "opacity-40 grayscale"
@@ -594,66 +587,32 @@ export default function BulkGeneratePage() {
             </div>
           )}
 
-          {/* Step 3: Configure Generation */}
+          {/* Step 3: Select Template */}
           {selectedProducts.size > 0 && selectedVariant && (
             <>
-              {/* Image Type Selection */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-1">Step 3: Select Image Type</h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  Choose what type of image to generate.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {imageTypes.map(type => (
-                    <div
-                      key={type.id}
-                      onClick={() => setSelectedImageTypeId(type.id)}
-                      className={`border-2 rounded-lg p-4 cursor-pointer transition ${
-                        selectedImageTypeId === type.id
-                          ? "border-blue-600 bg-blue-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-1">
-                        <h3 className="font-semibold text-gray-900">{type.name}</h3>
-                        <input
-                          type="radio"
-                          checked={selectedImageTypeId === type.id}
-                          onChange={() => {}}
-                          className="mt-1"
-                        />
-                      </div>
-                      <p className="text-sm text-gray-600">{type.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Template Selector */}
               <TemplateSelector
                 category="image"
-                onPromptGenerated={(prompt, templateId) => {
-                  setTemplatePrompt(prompt)
-                  setSelectedTemplateId(templateId)
+                mode="single"
+                onSelectionChange={(selections) => {
+                  setTemplateSelection(selections.length > 0 ? selections[0] : null)
                 }}
               />
 
               {/* Custom Prompt */}
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-1">
-                  {templatePrompt ? "Additional Instructions (Optional)" : "Custom Prompt (Optional)"}
+                  {templateSelection ? "Additional Instructions (Optional)" : "Custom Prompt (Optional)"}
                 </h2>
                 <p className="text-sm text-gray-500 mb-4">
-                  {templatePrompt
+                  {templateSelection
                     ? "Add any additional instructions to combine with the template prompt."
-                    : "Enter a prompt that will be applied to all selected products. Use {product_title}, {category}, {asin} as placeholders."
+                    : "Select a template above first, then optionally add extra instructions."
                   }
                 </p>
                 <textarea
                   value={customPrompt}
                   onChange={e => setCustomPrompt(e.target.value)}
-                  placeholder={templatePrompt ? "Additional instructions (optional)..." : "Enter custom prompt here..."}
+                  placeholder={templateSelection ? "Additional instructions (optional)..." : "Select a template first..."}
                   className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -661,7 +620,7 @@ export default function BulkGeneratePage() {
           )}
 
           {/* Step 4: Review & Generate */}
-          {selectedProducts.size > 0 && selectedVariant && selectedImageTypeId && (
+          {selectedProducts.size > 0 && selectedVariant && templateSelection && (
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Review & Generate</h2>
 
@@ -676,9 +635,9 @@ export default function BulkGeneratePage() {
                     <p className="font-semibold text-gray-900">{selectedVariant}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Image Type</p>
+                    <p className="text-gray-500">Template</p>
                     <p className="font-semibold text-gray-900">
-                      {imageTypes.find(t => t.id === selectedImageTypeId)?.name}
+                      {templateSelection.templateName}
                     </p>
                   </div>
                   <div>
@@ -850,8 +809,10 @@ export default function BulkGeneratePage() {
                               <p className="font-medium text-gray-900">{hJob.variant || "N/A"}</p>
                             </div>
                             <div>
-                              <p className="text-gray-500">Image Type</p>
-                              <p className="font-medium text-gray-900">{hJob.imageTypeNames[0] || "N/A"}</p>
+                              <p className="text-gray-500">Template</p>
+                              <p className="font-medium text-gray-900">
+                                {(hJob.templateNames && hJob.templateNames[0]) || hJob.imageTypeNames[0] || "N/A"}
+                              </p>
                             </div>
                             <div>
                               <p className="text-gray-500">Products</p>
@@ -944,7 +905,9 @@ export default function BulkGeneratePage() {
                                   <p className="text-xs font-medium text-gray-900 truncate group-hover:text-blue-600">
                                     {img.product.asin || img.product.title.substring(0, 20)}
                                   </p>
-                                  <p className="text-xs text-gray-400 truncate">{img.imageType.name}</p>
+                                  <p className="text-xs text-gray-400 truncate">
+                                    {img.templateName || img.template?.name || img.imageType?.name || "Generated"}
+                                  </p>
                                 </div>
                               </Link>
                             ))}

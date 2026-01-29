@@ -16,17 +16,23 @@ interface SourceImage {
 
 interface GeneratedImage {
   id: string
-  imageTypeId: string
+  imageTypeId?: string | null
+  templateId?: string | null
+  templateName?: string | null
   status: string
   version: number
   fileName: string
   filePath: string
   sourceImageId?: string | null
   parentImageId?: string | null
-  imageType: {
+  imageType?: {
     id: string
     name: string
-  }
+  } | null
+  template?: {
+    id: string
+    name: string
+  } | null
   sourceImage?: {
     id: string
     variant: string
@@ -62,6 +68,7 @@ export default function ProductDetailPage() {
   const [regenerating, setRegenerating] = useState(false)
   const [downloadingAll, setDownloadingAll] = useState(false)
   const [imageView, setImageView] = useState<'grid' | 'table'>('grid')
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
 
   // Download a single image using the proxy API to avoid CORS issues
   const downloadImage = async (imageUrl: string, fileName: string) => {
@@ -154,7 +161,32 @@ export default function ProductDetailPage() {
 
   // Get the display URL for a generated image
   const getImageUrl = (image: GeneratedImage) => {
-    return image.filePath?.startsWith('http') ? image.filePath : `/uploads/${image.fileName}`
+    if (image.filePath?.startsWith('http')) {
+      return image.filePath
+    }
+    // Use the dynamic API route to serve uploaded files (Next.js production
+    // mode does not serve files added to /public after build time)
+    return `/api/uploads/${image.fileName}`
+  }
+
+  // Delete a generated image
+  const handleDeleteImage = async (imageId: string) => {
+    if (!confirm('Are you sure you want to delete this image? This action cannot be undone.')) return
+
+    setDeletingImageId(imageId)
+    try {
+      const response = await fetch(`/api/images/${imageId}`, { method: 'DELETE' })
+      if (response.ok) {
+        await loadProduct()
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to delete: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setDeletingImageId(null)
+    }
   }
 
   useEffect(() => {
@@ -178,9 +210,13 @@ export default function ProductDetailPage() {
     }
   }
 
-  const openRegenerateModal = (imageId: string, imageTypeName: string) => {
+  const getImageDisplayName = (image: GeneratedImage) => {
+    return image.templateName || image.template?.name || image.imageType?.name || 'Generated Image'
+  }
+
+  const openRegenerateModal = (imageId: string, displayName: string) => {
     setSelectedImageForRegeneration(imageId)
-    setRegeneratePrompt(`Regenerate ${imageTypeName}`)
+    setRegeneratePrompt(`Regenerate ${displayName}`)
     setShowRegenerateModal(true)
   }
 
@@ -193,15 +229,23 @@ export default function ProductDetailPage() {
     setRegenerating(true)
 
     try {
+      const requestBody: any = {
+        productId: product.id,
+        parentImageId: selectedImageForRegeneration,
+        customPrompt: regeneratePrompt
+      }
+
+      // Use templateId if available, otherwise fall back to imageTypeId
+      if (generatedImage.templateId) {
+        requestBody.templateId = generatedImage.templateId
+      } else if (generatedImage.imageTypeId) {
+        requestBody.imageTypeId = generatedImage.imageTypeId
+      }
+
       const response = await fetch('/api/images/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: product.id,
-          imageTypeId: generatedImage.imageTypeId,
-          parentImageId: selectedImageForRegeneration,
-          customPrompt: regeneratePrompt
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (response.ok) {
@@ -251,6 +295,20 @@ export default function ProductDetailPage() {
   }
 
   const inventory = (product.metadata as any)?.inventory?.quantity || 0
+
+  // Filter source images: only keep the largest image per variant
+  const filteredSourceImages = (() => {
+    if (!product.sourceImages) return []
+    const variantMap = new Map<string, SourceImage>()
+    for (const img of product.sourceImages) {
+      const variant = img.variant || "UNKNOWN"
+      const existing = variantMap.get(variant)
+      if (!existing || (img.width * img.height) > (existing.width * existing.height)) {
+        variantMap.set(variant, img)
+      }
+    }
+    return Array.from(variantMap.values())
+  })()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -305,9 +363,9 @@ export default function ProductDetailPage() {
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-gray-900">
-              Source Images from Amazon ({product.sourceImages?.length || 0})
+              Source Images from Amazon ({filteredSourceImages.length})
             </h2>
-            {product.sourceImages && product.sourceImages.length > 0 && (
+            {filteredSourceImages.length > 0 && (
               <button
                 onClick={downloadAllSourceImages}
                 disabled={downloadingAll}
@@ -329,9 +387,9 @@ export default function ProductDetailPage() {
               </button>
             )}
           </div>
-          {product.sourceImages && product.sourceImages.length > 0 ? (
+          {filteredSourceImages.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {product.sourceImages.map((image) => (
+              {filteredSourceImages.map((image) => (
                 <div key={image.id} className="border rounded-lg p-2 hover:shadow-lg transition group">
                   <div className="relative aspect-square bg-gray-100 rounded">
                     <img
@@ -426,10 +484,24 @@ export default function ProductDetailPage() {
                     <div className="relative aspect-square bg-gray-100 rounded">
                       <img
                         src={getImageUrl(image)}
-                        alt={`${product.title} - ${image.imageType.name}`}
+                        alt={`${product.title} - ${getImageDisplayName(image)}`}
                         className="object-contain w-full h-full rounded"
                       />
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          onClick={() => handleDeleteImage(image.id)}
+                          disabled={deletingImageId === image.id}
+                          className="bg-red-600 bg-opacity-90 text-white p-1.5 rounded hover:bg-opacity-100 disabled:opacity-50"
+                          title="Delete image"
+                        >
+                          {deletingImageId === image.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          )}
+                        </button>
                         <button
                           onClick={() => downloadImage(getImageUrl(image), image.fileName)}
                           className="bg-gray-800 bg-opacity-75 text-white p-1.5 rounded hover:bg-opacity-100"
@@ -440,7 +512,7 @@ export default function ProductDetailPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => openRegenerateModal(image.id, image.imageType.name)}
+                          onClick={() => openRegenerateModal(image.id, getImageDisplayName(image))}
                           className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-blue-700"
                         >
                           Regenerate
@@ -448,7 +520,7 @@ export default function ProductDetailPage() {
                       </div>
                     </div>
                     <div className="mt-2 text-xs">
-                      <p className="font-medium text-gray-700 mb-1">{image.imageType.name}</p>
+                      <p className="font-medium text-gray-700 mb-1">{getImageDisplayName(image)}</p>
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
                         image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
                         image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
@@ -503,7 +575,7 @@ export default function ProductDetailPage() {
                           <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden">
                             <img
                               src={getImageUrl(image)}
-                              alt={image.imageType.name}
+                              alt={getImageDisplayName(image)}
                               className="w-full h-full object-contain"
                             />
                           </div>
@@ -514,7 +586,7 @@ export default function ProductDetailPage() {
                           </p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm text-gray-700">{image.imageType.name}</p>
+                          <p className="text-sm text-gray-700">{getImageDisplayName(image)}</p>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -541,6 +613,20 @@ export default function ProductDetailPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <button
+                              onClick={() => handleDeleteImage(image.id)}
+                              disabled={deletingImageId === image.id}
+                              className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                              title="Delete"
+                            >
+                              {deletingImageId === image.id ? (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              )}
+                            </button>
+                            <button
                               onClick={() => downloadImage(getImageUrl(image), image.fileName)}
                               className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                               title="Download"
@@ -550,7 +636,7 @@ export default function ProductDetailPage() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => openRegenerateModal(image.id, image.imageType.name)}
+                              onClick={() => openRegenerateModal(image.id, getImageDisplayName(image))}
                               className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                               title="Regenerate"
                             >

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           done: true,
           video: existingVideo,
-          url: `/uploads/${existingVideo.fileName}`,
+          url: `/api/uploads/${existingVideo.fileName}`,
           message: 'Video already completed'
         })
       }
@@ -185,14 +185,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           done: true,
           video: updatedVideo,
-          url: `/uploads/${fileName}`
+          url: `/api/uploads/${fileName}`
         })
       }
 
       return NextResponse.json({
         done: true,
         fileName,
-        url: `/uploads/${fileName}`,
+        url: `/api/uploads/${fileName}`,
         fileSize
       })
     } else {

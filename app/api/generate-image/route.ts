@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       filename,
-      url: `/uploads/${filename}`,
+      url: `/api/uploads/${filename}`,
       size: buffer.length,
       mimeType: imageData.inlineData.mimeType,
     });

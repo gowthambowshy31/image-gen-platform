@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import ImageSelector from '@/app/components/ImageSelector'
-import TemplateSelector from '@/app/components/TemplateSelector'
+import TemplateSelector, { TemplateSelection } from '@/app/components/TemplateSelector'
 
 interface Product {
   id: string
@@ -30,10 +30,15 @@ interface GeneratedImage {
   filePath: string
   width: number
   height: number
-  imageType: {
+  templateName?: string | null
+  imageType?: {
     id: string
     name: string
-  }
+  } | null
+  template?: {
+    id: string
+    name: string
+  } | null
   status: string
 }
 
@@ -314,7 +319,7 @@ export default function GenerateVideoPage() {
             description="Select a product image to use as reference for the video (optional). The AI will use this to generate a video based on the product."
             images={product.sourceImages.map(img => ({
               id: img.id,
-              url: img.localFilePath,
+              url: img.localFilePath?.startsWith('http') ? img.localFilePath : img.localFilePath ? `/api${img.localFilePath}` : img.amazonImageUrl,
               label: img.variant,
               width: img.width,
               height: img.height
@@ -336,8 +341,8 @@ export default function GenerateVideoPage() {
               .filter(img => img.status === 'COMPLETED')
               .map(img => ({
                 id: img.id,
-                url: img.filePath?.startsWith('http') ? img.filePath : `/uploads/${img.fileName}`,
-                label: img.imageType.name,
+                url: img.filePath?.startsWith('http') ? img.filePath : `/api/uploads/${img.fileName}`,
+                label: img.templateName || img.template?.name || img.imageType?.name || 'Generated',
                 width: img.width,
                 height: img.height
               }))}
@@ -354,6 +359,7 @@ export default function GenerateVideoPage() {
         {product && (
           <TemplateSelector
             category="video"
+            mode="single"
             product={{
               id: product.id,
               title: product.title,
@@ -361,9 +367,14 @@ export default function GenerateVideoPage() {
               asin: product.asin
             }}
             initialTemplateId={initialTemplateId}
-            onPromptGenerated={(prompt, templateId) => {
-              setTemplatePrompt(prompt)
-              setSelectedTemplateId(templateId)
+            onSelectionChange={(selections) => {
+              if (selections.length > 0) {
+                setTemplatePrompt(selections[0].renderedPrompt)
+                setSelectedTemplateId(selections[0].templateId)
+              } else {
+                setTemplatePrompt(null)
+                setSelectedTemplateId(null)
+              }
             }}
           />
         )}
@@ -528,12 +539,12 @@ export default function GenerateVideoPage() {
                       <video
                         controls
                         className="w-full rounded-lg max-h-96"
-                        src={`/uploads/${video.fileName}`}
+                        src={`/api/uploads/${video.fileName}`}
                       >
                         Your browser does not support the video tag.
                       </video>
                       <a
-                        href={`/uploads/${video.fileName}`}
+                        href={`/api/uploads/${video.fileName}`}
                         download
                         className="inline-block mt-3 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-semibold"
                       >

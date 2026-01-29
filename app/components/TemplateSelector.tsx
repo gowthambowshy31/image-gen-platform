@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 
 interface TemplateVariable {
@@ -21,6 +21,7 @@ interface Template {
   description: string | null
   promptText: string
   category: string
+  order: number
   variables: TemplateVariable[]
 }
 
@@ -31,49 +32,57 @@ interface Product {
   asin?: string | null
 }
 
+export interface TemplateSelection {
+  templateId: string
+  templateName: string
+  renderedPrompt: string
+}
+
 interface TemplateSelectorProps {
   category: "image" | "video" | "both"
   product?: Product
   initialTemplateId?: string | null
-  onPromptGenerated: (prompt: string | null, templateId: string | null) => void
+  mode: "single" | "multi"
+  onSelectionChange: (selections: TemplateSelection[]) => void
 }
 
-export default function TemplateSelector({ category, product, initialTemplateId, onPromptGenerated }: TemplateSelectorProps) {
+export default function TemplateSelector({
+  category,
+  product,
+  initialTemplateId,
+  mode,
+  onSelectionChange
+}: TemplateSelectorProps) {
   const [templates, setTemplates] = useState<Template[]>([])
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [variableValues, setVariableValues] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     loadTemplates()
   }, [category])
 
-  // Pre-select template when initialTemplateId is provided and templates are loaded
+  // Pre-select template when initialTemplateId is provided
   useEffect(() => {
-    if (initialTemplateId && templates.length > 0 && !selectedTemplate) {
+    if (initialTemplateId && templates.length > 0 && selectedIds.size === 0) {
       const template = templates.find(t => t.id === initialTemplateId)
       if (template) {
-        setSelectedTemplate(template)
-        // Initialize with default values
-        const defaults: Record<string, string> = {}
-        for (const variable of template.variables) {
-          if (variable.defaultValue) {
-            defaults[variable.name] = variable.defaultValue
-          }
-        }
-        setVariableValues(defaults)
-        setExpanded(true)
+        setSelectedIds(new Set([template.id]))
+        initializeDefaults([template])
       }
     }
-  }, [initialTemplateId, templates, selectedTemplate])
+  }, [initialTemplateId, templates])
 
+  // Auto-fill product values for AUTO variables whenever selection or product changes
   useEffect(() => {
-    // Auto-fill product values when template or product changes
-    if (selectedTemplate && product) {
-      const autoValues: Record<string, string> = {}
-      for (const variable of selectedTemplate.variables) {
+    if (!product) return
+    const selectedTemplates = templates.filter(t => selectedIds.has(t.id))
+    if (selectedTemplates.length === 0) return
+
+    const autoValues: Record<string, string> = {}
+    for (const tmpl of selectedTemplates) {
+      for (const variable of tmpl.variables) {
         if (variable.type === "AUTO" && variable.autoFillSource) {
           if (variable.autoFillSource === "product.title") {
             autoValues[variable.name] = product.title
@@ -84,17 +93,37 @@ export default function TemplateSelector({ category, product, initialTemplateId,
           }
         }
       }
-      setVariableValues(prev => ({ ...prev, ...autoValues }))
     }
-  }, [selectedTemplate, product])
+    setVariableValues(prev => ({ ...prev, ...autoValues }))
+  }, [selectedIds, product, templates])
+
+  // Emit selections whenever variableValues or selectedIds change
+  const emitSelections = useCallback(() => {
+    const selectedTemplates = templates.filter(t => selectedIds.has(t.id))
+    if (selectedTemplates.length === 0) {
+      onSelectionChange([])
+      return
+    }
+
+    const selections: TemplateSelection[] = selectedTemplates.map(tmpl => {
+      let prompt = tmpl.promptText
+      for (const variable of tmpl.variables) {
+        const value = variableValues[variable.name] || ""
+        prompt = prompt.replace(new RegExp(`\\{\\{${variable.name}\\}\\}`, "g"), value)
+      }
+      return {
+        templateId: tmpl.id,
+        templateName: tmpl.name,
+        renderedPrompt: prompt
+      }
+    })
+
+    onSelectionChange(selections)
+  }, [templates, selectedIds, variableValues, onSelectionChange])
 
   useEffect(() => {
-    // Generate prompt whenever variables change
-    if (selectedTemplate) {
-      const prompt = renderPrompt()
-      onPromptGenerated(prompt, selectedTemplate.id)
-    }
-  }, [variableValues, selectedTemplate])
+    emitSelections()
+  }, [variableValues, selectedIds, templates])
 
   const loadTemplates = async (showRefreshing = false) => {
     try {
@@ -105,29 +134,21 @@ export default function TemplateSelector({ category, product, initialTemplateId,
       }
       const categoryParam = category === "both" ? "" : `?category=${category}`
       const separator = categoryParam ? "&" : "?"
-      // Add cache-busting parameter to ensure fresh data
       const response = await fetch(`/api/templates${categoryParam}${separator}_t=${Date.now()}`)
       if (response.ok) {
         const data = await response.json()
-        // Filter templates that match category or are "both"
         const filtered = data.filter((t: Template) =>
           t.category === "both" || t.category === category
         )
         setTemplates(filtered)
-        
-        // If we had a selected template, try to find it again (in case it was updated)
-        if (selectedTemplate) {
-          const updatedTemplate = filtered.find((t: Template) => t.id === selectedTemplate.id)
-          if (updatedTemplate) {
-            setSelectedTemplate(updatedTemplate)
-            // Re-initialize variable values with defaults
-            const defaults: Record<string, string> = {}
-            for (const variable of updatedTemplate.variables) {
-              if (variable.defaultValue) {
-                defaults[variable.name] = variable.defaultValue
-              }
-            }
-            setVariableValues(prev => ({ ...defaults, ...prev }))
+
+        // If we had selections, try to preserve them
+        if (selectedIds.size > 0) {
+          const stillValid = new Set(
+            [...selectedIds].filter(id => filtered.some((t: Template) => t.id === id))
+          )
+          if (stillValid.size !== selectedIds.size) {
+            setSelectedIds(stillValid)
           }
         }
       }
@@ -139,38 +160,70 @@ export default function TemplateSelector({ category, product, initialTemplateId,
     }
   }
 
-  const handleTemplateSelect = (template: Template | null) => {
-    setSelectedTemplate(template)
-    if (template) {
-      // Initialize with default values
-      const defaults: Record<string, string> = {}
-      for (const variable of template.variables) {
+  const initializeDefaults = (selectedTemplates: Template[]) => {
+    const defaults: Record<string, string> = {}
+    for (const tmpl of selectedTemplates) {
+      for (const variable of tmpl.variables) {
         if (variable.defaultValue) {
           defaults[variable.name] = variable.defaultValue
         }
       }
-      setVariableValues(defaults)
-      setExpanded(true)
+    }
+    setVariableValues(prev => ({ ...defaults, ...prev }))
+  }
+
+  const toggleTemplate = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId)
+    if (!template) return
+
+    if (mode === "single") {
+      if (selectedIds.has(templateId)) {
+        setSelectedIds(new Set())
+        setVariableValues({})
+      } else {
+        setSelectedIds(new Set([templateId]))
+        initializeDefaults([template])
+      }
     } else {
-      setVariableValues({})
-      onPromptGenerated(null, null)
+      const newIds = new Set(selectedIds)
+      if (newIds.has(templateId)) {
+        newIds.delete(templateId)
+      } else {
+        newIds.add(templateId)
+        initializeDefaults([template])
+      }
+      setSelectedIds(newIds)
     }
   }
 
-  const renderPrompt = (): string => {
-    if (!selectedTemplate) return ""
+  const selectAll = () => {
+    const allIds = new Set(templates.map(t => t.id))
+    setSelectedIds(allIds)
+    initializeDefaults(templates)
+  }
 
-    let prompt = selectedTemplate.promptText
-    for (const variable of selectedTemplate.variables) {
-      const value = variableValues[variable.name] || ""
-      prompt = prompt.replace(new RegExp(`\\{\\{${variable.name}\\}\\}`, "g"), value)
+  const deselectAll = () => {
+    setSelectedIds(new Set())
+    setVariableValues({})
+  }
+
+  // Collect unique variables from all selected templates
+  const getUniqueVariables = (): TemplateVariable[] => {
+    const selectedTemplates = templates.filter(t => selectedIds.has(t.id))
+    const seen = new Map<string, TemplateVariable>()
+    for (const tmpl of selectedTemplates) {
+      for (const variable of tmpl.variables) {
+        if (!seen.has(variable.name)) {
+          seen.set(variable.name, variable)
+        }
+      }
     }
-    return prompt
+    return Array.from(seen.values()).sort((a, b) => a.order - b.order)
   }
 
   const getMissingRequired = (): string[] => {
-    if (!selectedTemplate) return []
-    return selectedTemplate.variables
+    const uniqueVars = getUniqueVariables()
+    return uniqueVars
       .filter(v => v.isRequired && !variableValues[v.name])
       .map(v => v.displayName)
   }
@@ -180,144 +233,136 @@ export default function TemplateSelector({ category, product, initialTemplateId,
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="animate-pulse">
           <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-          <div className="h-10 bg-gray-200 rounded"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-24 bg-gray-200 rounded"></div>
+            ))}
+          </div>
         </div>
       </div>
     )
   }
 
   if (templates.length === 0) {
-    return null
+    return (
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <div className="text-center py-6">
+          <p className="text-gray-500 mb-3">No templates available.</p>
+          <Link
+            href="/templates/new"
+            target="_blank"
+            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+          >
+            Create Your First Template
+          </Link>
+        </div>
+      </div>
+    )
   }
+
+  const uniqueVariables = getUniqueVariables()
+  const hasVariables = uniqueVariables.length > 0 && selectedIds.size > 0
 
   return (
     <div className="bg-white rounded-lg shadow p-6 mb-6">
+      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-gray-900">
-          Use Prompt Template (Optional)
+          Select Templates to Generate
         </h2>
         <div className="flex items-center gap-3">
+          {mode === "multi" && (
+            <>
+              <button
+                onClick={selectAll}
+                className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
+              >
+                Select All
+              </button>
+              <button
+                onClick={deselectAll}
+                className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded"
+              >
+                Deselect All
+              </button>
+            </>
+          )}
           <button
             onClick={() => loadTemplates(true)}
             disabled={refreshing}
             className="text-sm text-gray-600 hover:text-gray-700 disabled:opacity-50"
             title="Refresh templates"
           >
-            {refreshing ? "⟳" : "↻"} Refresh
+            {refreshing ? "..." : "Refresh"}
           </button>
-          {selectedTemplate && (
-            <>
-              <Link
-                href={`/templates/${selectedTemplate.id}/edit`}
-                target="_blank"
-                className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-              >
-                Edit Template
-              </Link>
-              <button
-                onClick={() => handleTemplateSelect(null)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Clear template
-              </button>
-            </>
-          )}
           <Link
             href="/templates"
             target="_blank"
             className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium"
           >
-            Manage Templates →
+            Manage Templates
           </Link>
         </div>
       </div>
 
-      {/* Template Selector */}
-      <div className="mb-4">
-        <select
-          value={selectedTemplate?.id || ""}
-          onChange={(e) => {
-            const template = templates.find(t => t.id === e.target.value) || null
-            handleTemplateSelect(template)
-          }}
-          className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">Select a template...</option>
-          {templates.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.name} ({template.variables.length} variables)
-            </option>
-          ))}
-        </select>
+      {/* Template Card Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        {templates.map((template) => {
+          const isSelected = selectedIds.has(template.id)
+          return (
+            <div
+              key={template.id}
+              onClick={() => toggleTemplate(template.id)}
+              className={`border-2 rounded-lg p-4 cursor-pointer transition ${
+                isSelected
+                  ? "border-blue-600 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <h3 className="font-semibold text-gray-900">{template.name}</h3>
+                <input
+                  type={mode === "multi" ? "checkbox" : "radio"}
+                  checked={isSelected}
+                  onChange={() => {}}
+                  name="template-selector"
+                  className="mt-1 flex-shrink-0"
+                />
+              </div>
+              {template.description && (
+                <p className="text-sm text-gray-600 line-clamp-2 mb-2">{template.description}</p>
+              )}
+              <div className="flex items-center gap-2">
+                {template.variables.length > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {template.variables.length} variable{template.variables.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  template.category === "image"
+                    ? "bg-blue-100 text-blue-700"
+                    : template.category === "video"
+                    ? "bg-purple-100 text-purple-700"
+                    : "bg-green-100 text-green-700"
+                }`}>
+                  {template.category}
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      {/* Quick Templates */}
-      {!selectedTemplate && templates.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          <span className="text-sm text-gray-500">Quick select:</span>
-          {templates.slice(0, 3).map((template) => (
-            <button
-              key={template.id}
-              onClick={() => handleTemplateSelect(template)}
-              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
-            >
-              {template.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Info about templates */}
-      {templates.length === 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-blue-800">
-            No templates available.{" "}
-            <Link
-              href="/templates/new"
-              target="_blank"
-              className="font-medium hover:underline"
-            >
-              Create your first template →
-            </Link>
-          </p>
-        </div>
-      )}
-
-      {/* Info about shared templates */}
-      {templates.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 mb-4">
-          <p className="text-xs text-gray-600">
-            💡 Templates are shared across all generation pages. Create and manage them in{" "}
-            <Link
-              href="/templates"
-              target="_blank"
-              className="text-blue-600 hover:underline"
-            >
-              Templates
-            </Link>
-            .
-          </p>
-        </div>
-      )}
-
-      {/* Variable Inputs */}
-      {selectedTemplate && expanded && (
-        <div className="border-t pt-4 mt-4">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-sm font-medium text-gray-700">
-              Fill in Variables
-            </h3>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              {expanded ? "Collapse" : "Expand"}
-            </button>
-          </div>
+      {/* Variable Inputs — shown when templates are selected and have non-AUTO variables */}
+      {hasVariables && uniqueVariables.some(v => v.type !== "AUTO") && (
+        <div className="border-t pt-4 mt-2">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">
+            Fill in Variables
+          </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {selectedTemplate.variables.map((variable) => (
-              <div key={variable.id}>
+            {uniqueVariables.map((variable) => (
+              <div key={variable.name}>
                 <label className="block text-sm text-gray-600 mb-1">
                   {variable.displayName}
                   {variable.isRequired && <span className="text-red-500 ml-1">*</span>}
@@ -368,28 +413,31 @@ export default function TemplateSelector({ category, product, initialTemplateId,
             </div>
           )}
 
-          {/* Preview */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">Generated Prompt Preview:</p>
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">
-              {renderPrompt() || <span className="text-gray-400 italic">Fill in variables to see preview</span>}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Template Info */}
-      {selectedTemplate && !expanded && (
-        <div className="bg-blue-50 rounded px-3 py-2">
-          <p className="text-sm text-blue-700">
-            Template "{selectedTemplate.name}" selected with {selectedTemplate.variables.length} variables.
-            <button
-              onClick={() => setExpanded(true)}
-              className="ml-2 underline hover:no-underline"
-            >
-              Edit values
-            </button>
-          </p>
+          {/* Prompt Preview */}
+          <details className="bg-gray-50 rounded-lg p-4">
+            <summary className="text-xs text-gray-500 cursor-pointer select-none">
+              Prompt Preview ({selectedIds.size} template{selectedIds.size !== 1 ? "s" : ""})
+            </summary>
+            <div className="mt-3 space-y-3">
+              {templates
+                .filter(t => selectedIds.has(t.id))
+                .map(tmpl => {
+                  let prompt = tmpl.promptText
+                  for (const variable of tmpl.variables) {
+                    const value = variableValues[variable.name] || ""
+                    prompt = prompt.replace(new RegExp(`\\{\\{${variable.name}\\}\\}`, "g"), value)
+                  }
+                  return (
+                    <div key={tmpl.id}>
+                      <p className="text-xs font-medium text-gray-600 mb-1">{tmpl.name}:</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap bg-white rounded p-2 border">
+                        {prompt || <span className="text-gray-400 italic">Fill in variables to see preview</span>}
+                      </p>
+                    </div>
+                  )
+                })}
+            </div>
+          </details>
         </div>
       )}
     </div>

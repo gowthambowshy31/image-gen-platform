@@ -2,19 +2,29 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import archiver from "archiver"
 import { PassThrough } from "stream"
+import fs from "fs/promises"
+import path from "path"
 
 interface ImageData {
   url: string
   fileName: string
+  localFileName?: string // For reading from local disk
 }
 
-async function fetchImageAsBuffer(url: string): Promise<Buffer> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${url}`)
+async function fetchImageAsBuffer(img: ImageData): Promise<Buffer> {
+  // If the URL is an HTTP URL, fetch it remotely
+  if (img.url.startsWith("http")) {
+    const response = await fetch(img.url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${img.url}`)
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return Buffer.from(arrayBuffer)
   }
-  const arrayBuffer = await response.arrayBuffer()
-  return Buffer.from(arrayBuffer)
+
+  // Otherwise, read from local disk
+  const localPath = path.join(process.cwd(), "public", "uploads", img.localFileName || img.fileName)
+  return fs.readFile(localPath)
 }
 
 export async function POST(request: NextRequest) {
@@ -66,12 +76,10 @@ export async function POST(request: NextRequest) {
       } else if (imageType === "generated") {
         // Download generated images
         product.images.forEach((img) => {
-          const url = img.filePath?.startsWith("http")
-            ? img.filePath
-            : `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/uploads/${img.fileName}`
           images.push({
-            url,
-            fileName: img.fileName
+            url: img.filePath?.startsWith("http") ? img.filePath : "",
+            fileName: img.fileName,
+            localFileName: img.fileName
           })
         })
       } else {
@@ -83,12 +91,10 @@ export async function POST(request: NextRequest) {
           })
         })
         product.images.forEach((img) => {
-          const url = img.filePath?.startsWith("http")
-            ? img.filePath
-            : `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/uploads/${img.fileName}`
           images.push({
-            url,
-            fileName: img.fileName
+            url: img.filePath?.startsWith("http") ? img.filePath : "",
+            fileName: img.fileName,
+            localFileName: img.fileName
           })
         })
       }
@@ -152,10 +158,10 @@ export async function POST(request: NextRequest) {
     // Add images to archive
     const fetchPromises = images.map(async (img) => {
       try {
-        const buffer = await fetchImageAsBuffer(img.url)
+        const buffer = await fetchImageAsBuffer(img)
         archive.append(buffer, { name: img.fileName })
       } catch (error) {
-        console.error(`Failed to fetch ${img.url}:`, error)
+        console.error(`Failed to fetch ${img.url || img.fileName}:`, error)
         // Continue with other images even if one fails
       }
     })

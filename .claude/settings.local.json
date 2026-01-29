@@ -62,7 +62,9 @@
       "Bash(icacls image-gen-key.pem /grant:r \"$env:USERNAME:\\(R\\)\")",
       "Bash(npx tsc:*)",
       "Bash(git diff:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(powershell -Command \"Get-Content .env | Select-String -Pattern ''EC2|HOST|SERVER|SSH|DEPLOY''\")",
+      "Bash(powershell:*)"
     ]
   }
 }

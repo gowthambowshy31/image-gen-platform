@@ -4,14 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import ImageSelector from "@/app/components/ImageSelector"
-import TemplateSelector from "@/app/components/TemplateSelector"
-
-interface ImageType {
-  id: string
-  name: string
-  description: string
-  defaultPrompt: string
-}
+import TemplateSelector, { TemplateSelection } from "@/app/components/TemplateSelector"
 
 interface SourceImage {
   id: string
@@ -28,10 +21,15 @@ interface GeneratedImage {
   filePath: string
   width: number
   height: number
-  imageType: {
+  templateName?: string | null
+  imageType?: {
     id: string
     name: string
-  }
+  } | null
+  template?: {
+    id: string
+    name: string
+  } | null
   status: string
 }
 
@@ -49,13 +47,10 @@ export default function GenerateImagesPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [product, setProduct] = useState<Product | null>(null)
-  const [imageTypes, setImageTypes] = useState<ImageType[]>([])
-  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
   const [selectedSourceImage, setSelectedSourceImage] = useState<string>("")
   const [selectedGeneratedImage, setSelectedGeneratedImage] = useState<string>("")
   const [customPrompt, setCustomPrompt] = useState<string>("")
-  const [templatePrompt, setTemplatePrompt] = useState<string | null>(null)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [templateSelections, setTemplateSelections] = useState<TemplateSelection[]>([])
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -63,7 +58,6 @@ export default function GenerateImagesPage() {
 
   useEffect(() => {
     loadData()
-    // Get template ID from URL query params
     const templateId = searchParams.get("templateId")
     if (templateId) {
       setInitialTemplateId(templateId)
@@ -72,19 +66,10 @@ export default function GenerateImagesPage() {
 
   const loadData = async () => {
     try {
-      const [productRes, typesRes] = await Promise.all([
-        fetch(`/api/products/${params.id}`),
-        fetch('/api/image-types')
-      ])
-
+      const productRes = await fetch(`/api/products/${params.id}`)
       if (productRes.ok) {
         const productData = await productRes.json()
         setProduct(productData)
-      }
-
-      if (typesRes.ok) {
-        const typesData = await typesRes.json()
-        setImageTypes(typesData)
       }
     } catch (error) {
       console.error('Error loading data:', error)
@@ -93,63 +78,36 @@ export default function GenerateImagesPage() {
     }
   }
 
-  const toggleType = (typeId: string) => {
-    const newSelected = new Set(selectedTypes)
-    if (newSelected.has(typeId)) {
-      newSelected.delete(typeId)
-    } else {
-      newSelected.add(typeId)
-    }
-    setSelectedTypes(newSelected)
-  }
-
-  const selectAll = () => {
-    setSelectedTypes(new Set(imageTypes.map(t => t.id)))
-  }
-
-  const deselectAll = () => {
-    setSelectedTypes(new Set())
-  }
-
   const generateImages = async () => {
-    if (!product || selectedTypes.size === 0) return
+    if (!product || templateSelections.length === 0) return
 
     setGenerating(true)
-    const typesArray = Array.from(selectedTypes)
     let successCount = 0
     let failCount = 0
 
     try {
-      // Generate images one by one
-      for (let i = 0; i < typesArray.length; i++) {
-        const typeId = typesArray[i]
-        const typeName = imageTypes.find(t => t.id === typeId)?.name || 'Image'
+      for (let i = 0; i < templateSelections.length; i++) {
+        const selection = templateSelections[i]
 
-        setProgress(`Generating ${i + 1}/${typesArray.length}: ${typeName}...`)
+        setProgress(`Generating ${i + 1}/${templateSelections.length}: ${selection.templateName}...`)
 
         try {
           const requestBody: any = {
             productId: product.id,
-            imageTypeId: typeId
+            templateId: selection.templateId,
+            renderedPrompt: selection.renderedPrompt
           }
 
-          // Add optional source image if selected (Amazon images take priority)
+          // Add optional source image
           if (selectedSourceImage) {
             requestBody.sourceImageId = selectedSourceImage
           } else if (selectedGeneratedImage) {
-            // Use generated image if no Amazon image selected
             requestBody.generatedImageId = selectedGeneratedImage
           }
 
-          // Build the final prompt: template + custom additions
-          const finalPrompt = [templatePrompt, customPrompt.trim()].filter(Boolean).join("\n\n")
-          if (finalPrompt) {
-            requestBody.customPrompt = finalPrompt
-          }
-
-          // Track template usage if a template was selected
-          if (selectedTemplateId) {
-            requestBody.templateId = selectedTemplateId
+          // Append custom prompt if any
+          if (customPrompt.trim()) {
+            requestBody.renderedPrompt = selection.renderedPrompt + "\n\n" + customPrompt.trim()
           }
 
           const response = await fetch('/api/images/generate', {
@@ -162,25 +120,25 @@ export default function GenerateImagesPage() {
             successCount++
           } else {
             failCount++
-            console.error(`Failed to generate ${typeName}`)
+            console.error(`Failed to generate ${selection.templateName}`)
           }
         } catch (err) {
           failCount++
-          console.error(`Error generating ${typeName}:`, err)
+          console.error(`Error generating ${selection.templateName}:`, err)
         }
       }
 
       if (successCount > 0) {
-        setProgress(`✅ Successfully generated ${successCount} image${successCount !== 1 ? 's' : ''}!${failCount > 0 ? ` (${failCount} failed)` : ''}`)
+        setProgress(`Successfully generated ${successCount} image${successCount !== 1 ? 's' : ''}!${failCount > 0 ? ` (${failCount} failed)` : ''}`)
 
         setTimeout(() => {
           router.push(`/products/${product.id}`)
         }, 2000)
       } else {
-        setProgress(`❌ Failed to generate images. Please try again.`)
+        setProgress(`Failed to generate images. Please try again.`)
       }
     } catch (error) {
-      setProgress(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setProgress(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setGenerating(false)
     }
@@ -210,6 +168,10 @@ export default function GenerateImagesPage() {
     )
   }
 
+  const getImageLabel = (img: GeneratedImage) => {
+    return img.templateName || img.template?.name || img.imageType?.name || 'Generated'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -218,7 +180,7 @@ export default function GenerateImagesPage() {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <Link href={`/products/${product.id}`} className="text-gray-600 hover:text-gray-900">
-                ← Back
+                &larr; Back
               </Link>
               <h1 className="text-2xl font-bold text-gray-900">Generate Images</h1>
             </div>
@@ -226,7 +188,7 @@ export default function GenerateImagesPage() {
               href={`/products/${product.id}/generate-video`}
               className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-700 font-semibold shadow-lg"
             >
-              🎬 Generate Video
+              Generate Video
             </Link>
           </div>
         </div>
@@ -248,7 +210,7 @@ export default function GenerateImagesPage() {
             description="Choose a specific Amazon product image to use as the base for generation, or leave unselected to use the default."
             images={product.sourceImages.map(img => ({
               id: img.id,
-              url: img.localFilePath || img.amazonImageUrl,
+              url: img.localFilePath?.startsWith('http') ? img.localFilePath : img.localFilePath ? `/api${img.localFilePath}` : img.amazonImageUrl,
               label: img.variant,
               width: img.width,
               height: img.height
@@ -256,7 +218,7 @@ export default function GenerateImagesPage() {
             selectedImageId={selectedSourceImage}
             onSelect={(id) => {
               setSelectedSourceImage(id)
-              if (id) setSelectedGeneratedImage("") // Clear generated image selection
+              if (id) setSelectedGeneratedImage("")
             }}
           />
         )}
@@ -270,25 +232,26 @@ export default function GenerateImagesPage() {
               .filter(img => img.status === 'COMPLETED')
               .map(img => ({
                 id: img.id,
-                url: img.filePath?.startsWith('http') ? img.filePath : `/uploads/${img.fileName}`,
-                label: img.imageType.name,
-                sublabel: `v${img.imageType.name}`,
+                url: img.filePath?.startsWith('http') ? img.filePath : `/api/uploads/${img.fileName}`,
+                label: getImageLabel(img),
+                sublabel: `v${getImageLabel(img)}`,
                 width: img.width,
                 height: img.height
               }))}
             selectedImageId={selectedGeneratedImage}
             onSelect={(id) => {
               setSelectedGeneratedImage(id)
-              if (id) setSelectedSourceImage("") // Clear Amazon image selection
+              if (id) setSelectedSourceImage("")
             }}
             emptyMessage="No completed generated images available yet. Generate some images first!"
           />
         )}
 
-        {/* Template Selector */}
+        {/* Template Selector (replaces old Image Type checkboxes) */}
         {product && (
           <TemplateSelector
             category="image"
+            mode="multi"
             product={{
               id: product.id,
               title: product.title,
@@ -296,9 +259,8 @@ export default function GenerateImagesPage() {
               asin: product.asin
             }}
             initialTemplateId={initialTemplateId}
-            onPromptGenerated={(prompt, templateId) => {
-              setTemplatePrompt(prompt)
-              setSelectedTemplateId(templateId)
+            onSelectionChange={(selections) => {
+              setTemplateSelections(selections)
             }}
           />
         )}
@@ -306,66 +268,20 @@ export default function GenerateImagesPage() {
         {/* Custom Prompt */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {templatePrompt ? "Additional Instructions (Optional)" : "Custom Prompt (Optional)"}
+            {templateSelections.length > 0 ? "Additional Instructions (Optional)" : "Custom Prompt (Optional)"}
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            {templatePrompt
-              ? "Add any additional instructions to combine with the template prompt above."
-              : "Add specific instructions for the AI (e.g., \"make the diamond smaller\", \"increase product size\", \"brighter lighting\"). This will be combined with the image type's default prompt."
+            {templateSelections.length > 0
+              ? "Add any additional instructions to combine with the template prompts above."
+              : "Add specific instructions for the AI (e.g., \"make the diamond smaller\", \"increase product size\", \"brighter lighting\")."
             }
           </p>
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder={templatePrompt ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
+            placeholder={templateSelections.length > 0 ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
             className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-        </div>
-
-        {/* Image Type Selection */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Select Image Types to Generate</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={selectAll}
-                className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
-              >
-                Select All
-              </button>
-              <button
-                onClick={deselectAll}
-                className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded"
-              >
-                Deselect All
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {imageTypes.map((type) => (
-              <div
-                key={type.id}
-                onClick={() => toggleType(type.id)}
-                className={`border-2 rounded-lg p-4 cursor-pointer transition ${
-                  selectedTypes.has(type.id)
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">{type.name}</h3>
-                  <input
-                    type="checkbox"
-                    checked={selectedTypes.has(type.id)}
-                    onChange={() => {}}
-                    className="mt-1"
-                  />
-                </div>
-                <p className="text-sm text-gray-600">{type.description}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Generation Progress */}
@@ -379,9 +295,9 @@ export default function GenerateImagesPage() {
         <div className="flex justify-center">
           <button
             onClick={generateImages}
-            disabled={generating || selectedTypes.size === 0}
+            disabled={generating || templateSelections.length === 0}
             className={`px-8 py-3 rounded-lg font-semibold text-white transition ${
-              generating || selectedTypes.size === 0
+              generating || templateSelections.length === 0
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700'
             }`}
@@ -392,7 +308,7 @@ export default function GenerateImagesPage() {
                 Generating...
               </span>
             ) : (
-              `Generate ${selectedTypes.size} Image${selectedTypes.size !== 1 ? 's' : ''}`
+              `Generate ${templateSelections.length} Image${templateSelections.length !== 1 ? 's' : ''}`
             )}
           </button>
         </div>
@@ -401,9 +317,9 @@ export default function GenerateImagesPage() {
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="font-semibold text-blue-900 mb-2">How it works:</h3>
           <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
-            <li>Select the types of images you want to generate</li>
-            <li>AI will analyze your product's source images from Amazon</li>
-            <li>New marketing images will be created based on the selected types</li>
+            <li>Select the templates for the types of images you want to generate</li>
+            <li>AI will analyze your product&apos;s source images from Amazon</li>
+            <li>New marketing images will be created based on the selected templates</li>
             <li>Generated images will appear on the product detail page for review</li>
           </ul>
         </div>

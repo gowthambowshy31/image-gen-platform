@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
             success: true,
             done: true,
             filename,
-            url: `/uploads/${filename}`,
+            url: `/api/uploads/${filename}`,
             size: videoBuffer.length,
           });
         }

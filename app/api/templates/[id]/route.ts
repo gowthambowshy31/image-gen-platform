@@ -19,6 +19,7 @@ const updateTemplateSchema = z.object({
   description: z.string().optional().nullable(),
   promptText: z.string().min(1).optional(),
   category: z.enum(["image", "video", "both"]).optional(),
+  order: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
   variables: z.array(variableSchema).optional()
 })
@@ -89,6 +90,7 @@ export async function PUT(
     if (validated.description !== undefined) updateData.description = validated.description
     if (validated.promptText !== undefined) updateData.promptText = validated.promptText
     if (validated.category !== undefined) updateData.category = validated.category
+    if (validated.order !== undefined) updateData.order = validated.order
     if (validated.isActive !== undefined) updateData.isActive = validated.isActive
 
     // If variables are provided, replace all existing ones

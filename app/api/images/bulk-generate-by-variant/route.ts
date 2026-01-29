@@ -24,10 +24,14 @@ async function downloadImageToTemp(url: string): Promise<string | null> {
 const bulkGenerateSchema = z.object({
   productIds: z.array(z.string()).min(1),
   variant: z.string(),
-  imageTypeId: z.string(),
-  customPrompt: z.string().optional(),
-  templateId: z.string().optional()
-})
+  imageTypeId: z.string().optional(),
+  templateId: z.string().optional(),
+  renderedPrompt: z.string().optional(),
+  customPrompt: z.string().optional()
+}).refine(
+  data => data.imageTypeId || data.templateId || data.renderedPrompt || data.customPrompt,
+  { message: "Must provide imageTypeId, templateId, renderedPrompt, or customPrompt" }
+)
 
 // POST /api/images/bulk-generate-by-variant
 export async function POST(request: NextRequest) {
@@ -40,13 +44,34 @@ export async function POST(request: NextRequest) {
       where: { role: "ADMIN" }
     })
 
-    // Get image type
-    const imageType = await prisma.imageType.findUnique({
-      where: { id: validated.imageTypeId }
-    })
+    // Resolve prompt source: template flow vs legacy imageType flow
+    let imageType: any = null
+    let template: any = null
+    let displayName = 'Generated Image'
+    let basePrompt = ''
 
-    if (!imageType) {
-      return NextResponse.json({ error: "Image type not found" }, { status: 404 })
+    if (validated.templateId) {
+      template = await prisma.promptTemplate.findUnique({
+        where: { id: validated.templateId },
+        include: { variables: true }
+      })
+      if (!template) {
+        return NextResponse.json({ error: "Template not found" }, { status: 404 })
+      }
+      displayName = template.name
+      basePrompt = validated.renderedPrompt || validated.customPrompt || template.promptText
+    } else if (validated.imageTypeId) {
+      imageType = await prisma.imageType.findUnique({
+        where: { id: validated.imageTypeId }
+      })
+      if (!imageType) {
+        return NextResponse.json({ error: "Image type not found" }, { status: 404 })
+      }
+      displayName = imageType.name
+      basePrompt = validated.customPrompt || imageType.defaultPrompt
+    } else {
+      basePrompt = validated.renderedPrompt || validated.customPrompt || ''
+      displayName = 'Custom'
     }
 
     // For each product, find the highest-res source image with the given variant
@@ -74,9 +99,10 @@ export async function POST(request: NextRequest) {
     const job = await prisma.generationJob.create({
       data: {
         productIds: eligibleProducts.map(p => p.id),
-        imageTypeIds: [validated.imageTypeId],
+        imageTypeIds: validated.imageTypeId ? [validated.imageTypeId] : [],
+        templateIds: validated.templateId ? [validated.templateId] : [],
         variant: validated.variant,
-        promptUsed: validated.customPrompt || imageType.defaultPrompt,
+        promptUsed: basePrompt,
         status: "PROCESSING",
         totalImages: eligibleProducts.length,
         startedAt: new Date()
@@ -94,14 +120,15 @@ export async function POST(request: NextRequest) {
           metadata: {
             variant: validated.variant,
             productCount: eligibleProducts.length,
-            imageType: imageType.name
+            imageType: displayName,
+            templateId: template?.id || null
           }
         }
       })
     }
 
     // Process in background (don't await - return job immediately)
-    processJob(job.id, eligibleProducts, imageType, validated, adminUser?.id).catch(err => {
+    processJob(job.id, eligibleProducts, displayName, basePrompt, validated, adminUser?.id).catch(err => {
       console.error("Bulk generation job failed:", err)
     })
 
@@ -130,7 +157,8 @@ export async function POST(request: NextRequest) {
 async function processJob(
   jobId: string,
   products: any[],
-  imageType: any,
+  displayName: string,
+  basePrompt: string,
   validated: z.infer<typeof bulkGenerateSchema>,
   adminUserId?: string
 ) {
@@ -157,33 +185,40 @@ async function processJob(
         continue
       }
 
-      // Build prompt
-      let promptToUse = validated.customPrompt || imageType.defaultPrompt
-      promptToUse = promptToUse
+      // Build prompt with per-product variable substitution (both single and double brace syntax)
+      let promptToUse = basePrompt
+        .replace(/\{\{product_name\}\}/g, product.title)
+        .replace(/\{\{product_title\}\}/g, product.title)
+        .replace(/\{\{category\}\}/g, product.category || "")
+        .replace(/\{\{asin\}\}/g, product.asin || "")
         .replace(/\{product_name\}/g, product.title)
         .replace(/\{product_title\}/g, product.title)
         .replace(/\{category\}/g, product.category || "")
         .replace(/\{asin\}/g, product.asin || "")
 
       // Get version number
+      const versionWhere: any = { productId: product.id }
+      if (validated.templateId) {
+        versionWhere.templateId = validated.templateId
+      } else if (validated.imageTypeId) {
+        versionWhere.imageTypeId = validated.imageTypeId
+      }
+
       const existingImages = await prisma.generatedImage.findMany({
-        where: {
-          productId: product.id,
-          imageTypeId: validated.imageTypeId
-        },
+        where: versionWhere,
         orderBy: { version: "desc" },
         take: 1
       })
       const version = existingImages.length > 0 ? existingImages[0].version + 1 : 1
 
       // Generate filename
-      const sanitizedImageTypeName = imageType.name
+      const sanitizedName = displayName
         .replace(/[^a-zA-Z0-9\s-]/g, "")
         .replace(/\s+/g, "-")
         .toLowerCase()
       const productIdentifier = product.asin || product.id.slice(0, 8)
       const sequenceNum = String(Date.now()).slice(-4)
-      const fileName = `${productIdentifier}_${sanitizedImageTypeName}_v${version}_${sequenceNum}.png`
+      const fileName = `${productIdentifier}_${sanitizedName}_v${version}_${sequenceNum}.png`
       const uploadDir = process.env.UPLOAD_DIR || "./public/uploads"
       const outputPath = path.join(process.cwd(), uploadDir, fileName)
 
@@ -205,7 +240,9 @@ async function processJob(
       const imageRecord = await prisma.generatedImage.create({
         data: {
           productId: product.id,
-          imageTypeId: validated.imageTypeId,
+          imageTypeId: validated.imageTypeId || null,
+          templateId: validated.templateId || null,
+          templateName: displayName,
           sourceImageId: sourceImage.id,
           version,
           status: "GENERATING",

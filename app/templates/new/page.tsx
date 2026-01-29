@@ -32,6 +32,7 @@ export default function NewTemplatePage() {
   const [description, setDescription] = useState("")
   const [promptText, setPromptText] = useState("")
   const [category, setCategory] = useState<"image" | "video" | "both">("both")
+  const [order, setOrder] = useState(0)
   const [variables, setVariables] = useState<Variable[]>([])
 
   // Preview state
@@ -154,6 +155,7 @@ export default function NewTemplatePage() {
           description: description.trim() || null,
           promptText: promptText.trim(),
           category,
+          order,
           variables: variables.map(v => ({
             name: v.name,
             displayName: v.displayName,
@@ -264,6 +266,20 @@ export default function NewTemplatePage() {
                       </label>
                     ))}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Display Order
+                  </label>
+                  <input
+                    type="number"
+                    value={order}
+                    onChange={(e) => setOrder(parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-32 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Lower numbers appear first on the generate page</p>
                 </div>
               </div>
             </div>
