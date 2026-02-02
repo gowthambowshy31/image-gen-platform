@@ -42,13 +42,6 @@ interface GeneratedImage {
   status: string
 }
 
-interface VideoType {
-  id: string
-  name: string
-  description: string
-  defaultPrompt: string
-}
-
 interface Video {
   id: string
   status: string
@@ -70,9 +63,7 @@ export default function GenerateVideoPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [product, setProduct] = useState<Product | null>(null)
-  const [videoTypes, setVideoTypes] = useState<VideoType[]>([])
   const [videos, setVideos] = useState<Video[]>([])
-  const [selectedVideoType, setSelectedVideoType] = useState<string>('')
   const [selectedSourceImage, setSelectedSourceImage] = useState<string>('')
   const [selectedGeneratedImage, setSelectedGeneratedImage] = useState<string>('')
   const [customPrompt, setCustomPrompt] = useState<string>('')
@@ -97,20 +88,14 @@ export default function GenerateVideoPage() {
 
   const loadData = async () => {
     try {
-      const [productRes, videoTypesRes, videosRes] = await Promise.all([
+      const [productRes, videosRes] = await Promise.all([
         fetch(`/api/products/${params.id}`),
-        fetch('/api/video-types'),
         fetch(`/api/videos?productId=${params.id}`)
       ])
 
       if (productRes.ok) {
         const productData = await productRes.json()
         setProduct(productData)
-      }
-
-      if (videoTypesRes.ok) {
-        const videoTypesData = await videoTypesRes.json()
-        setVideoTypes(videoTypesData)
       }
 
       if (videosRes.ok) {
@@ -125,7 +110,7 @@ export default function GenerateVideoPage() {
   }
 
   const generateVideo = async () => {
-    if (!product || !selectedVideoType) {
+    if (!product || !selectedTemplateId) {
       alert('Please select a video template')
       return
     }
@@ -134,7 +119,7 @@ export default function GenerateVideoPage() {
     try {
       const requestBody: any = {
         productId: product.id,
-        videoTypeId: selectedVideoType,
+        templateId: selectedTemplateId,
         aspectRatio,
         durationSeconds: duration,
         resolution
@@ -151,11 +136,6 @@ export default function GenerateVideoPage() {
       const finalPrompt = [templatePrompt, customPrompt.trim()].filter(Boolean).join("\n\n")
       if (finalPrompt) {
         requestBody.customPrompt = finalPrompt
-      }
-
-      // Track template usage if a template was selected
-      if (selectedTemplateId) {
-        requestBody.templateId = selectedTemplateId
       }
 
       const response = await fetch('/api/videos/generate', {
@@ -182,7 +162,6 @@ export default function GenerateVideoPage() {
       }
 
       // Reset form
-      setSelectedVideoType('')
       setCustomPrompt('')
     } catch (error) {
       console.error('Error generating video:', error)
@@ -277,39 +256,6 @@ export default function GenerateVideoPage() {
           <p className="text-sm text-gray-500">
             ASIN: {product.asin} | {product.sourceImages?.length || 0} source images | {product.images?.filter(i => i.status === 'COMPLETED').length || 0} generated images
           </p>
-        </div>
-
-        {/* Video Template Selection */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Video Template</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Choose the type of video you want to generate. Each template is optimized for specific use cases.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {videoTypes.map((type) => (
-              <div
-                key={type.id}
-                onClick={() => setSelectedVideoType(selectedVideoType === type.id ? '' : type.id)}
-                className={`border-2 rounded-lg p-4 cursor-pointer transition ${
-                  selectedVideoType === type.id
-                    ? 'border-purple-600 bg-purple-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">{type.name}</h3>
-                  <input
-                    type="radio"
-                    checked={selectedVideoType === type.id}
-                    onChange={() => {}}
-                    className="mt-1"
-                  />
-                </div>
-                <p className="text-sm text-gray-600">{type.description}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Amazon Source Image Selection */}
@@ -455,9 +401,9 @@ export default function GenerateVideoPage() {
         <div className="flex justify-center mb-6">
           <button
             onClick={generateVideo}
-            disabled={generating || !selectedVideoType}
+            disabled={generating || !selectedTemplateId}
             className={`px-8 py-3 rounded-lg font-semibold text-white transition ${
-              generating || !selectedVideoType
+              generating || !selectedTemplateId
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 shadow-lg'
             }`}
