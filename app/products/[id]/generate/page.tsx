@@ -280,7 +280,7 @@ export default function GenerateImagesPage() {
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             placeholder={templateSelections.length > 0 ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
-            className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 

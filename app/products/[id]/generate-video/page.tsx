@@ -394,7 +394,7 @@ export default function GenerateVideoPage() {
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             placeholder={templatePrompt ? "Additional instructions (optional)..." : "Enter custom instructions here..."}
-            className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>
 
@@ -410,7 +410,7 @@ export default function GenerateVideoPage() {
               <select
                 value={aspectRatio}
                 onChange={(e) => setAspectRatio(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-purple-500"
               >
                 <option value="16:9">16:9 (Landscape)</option>
                 <option value="9:16">9:16 (Portrait)</option>
@@ -425,7 +425,7 @@ export default function GenerateVideoPage() {
               <select
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-purple-500"
               >
                 <option value={4}>4 seconds</option>
                 <option value={5}>5 seconds</option>
@@ -442,7 +442,7 @@ export default function GenerateVideoPage() {
               <select
                 value={resolution}
                 onChange={(e) => setResolution(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-purple-500"
               >
                 <option value="720p">720p</option>
                 <option value="1080p">1080p</option>

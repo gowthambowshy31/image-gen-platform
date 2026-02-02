@@ -231,7 +231,7 @@ export default function NewTemplatePage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g., Product Lifestyle Shot"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
@@ -244,7 +244,7 @@ export default function NewTemplatePage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Brief description of what this template creates"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
@@ -277,7 +277,7 @@ export default function NewTemplatePage() {
                     value={order}
                     onChange={(e) => setOrder(parseInt(e.target.value) || 0)}
                     min={0}
-                    className="w-32 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-32 border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <p className="text-xs text-gray-500 mt-1">Lower numbers appear first on the generate page</p>
                 </div>
@@ -305,7 +305,7 @@ export default function NewTemplatePage() {
                 value={promptText}
                 onChange={(e) => setPromptText(e.target.value)}
                 placeholder="A professional {{style}} photo of {{product_title}} with {{lighting}} lighting on a {{background}} background"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 min-h-[150px] font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 min-h-[150px] font-mono text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -361,7 +361,7 @@ export default function NewTemplatePage() {
                             type="text"
                             value={variable.displayName}
                             onChange={(e) => updateVariable(variable.id, { displayName: e.target.value })}
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           />
                         </div>
 
@@ -374,7 +374,7 @@ export default function NewTemplatePage() {
                               options: e.target.value === "DROPDOWN" ? variable.options : [],
                               autoFillSource: e.target.value === "AUTO" ? variable.autoFillSource : ""
                             })}
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           >
                             <option value="TEXT">Text Input</option>
                             <option value="DROPDOWN">Dropdown</option>
@@ -392,7 +392,7 @@ export default function NewTemplatePage() {
                             value={variable.defaultValue}
                             onChange={(e) => updateVariable(variable.id, { defaultValue: e.target.value })}
                             placeholder="Optional default value"
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           />
                         </div>
                       )}
@@ -408,7 +408,7 @@ export default function NewTemplatePage() {
                                   value={option}
                                   onChange={(e) => updateOption(variable.id, index, e.target.value)}
                                   placeholder={`Option ${index + 1}`}
-                                  className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm"
+                                  className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                                 />
                                 <button
                                   type="button"
@@ -436,7 +436,7 @@ export default function NewTemplatePage() {
                           <select
                             value={variable.autoFillSource}
                             onChange={(e) => updateVariable(variable.id, { autoFillSource: e.target.value })}
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           >
                             <option value="">Select source...</option>
                             {AUTO_FILL_OPTIONS.map((opt) => (
@@ -467,7 +467,7 @@ export default function NewTemplatePage() {
                           <select
                             value={previewValues[variable.name] || ""}
                             onChange={(e) => setPreviewValues(prev => ({ ...prev, [variable.name]: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           >
                             <option value="">Select...</option>
                             {variable.options.filter(o => o.trim()).map((opt) => (
@@ -480,7 +480,7 @@ export default function NewTemplatePage() {
                             value={previewValues[variable.name] || ""}
                             onChange={(e) => setPreviewValues(prev => ({ ...prev, [variable.name]: e.target.value }))}
                             placeholder={variable.defaultValue || `Enter ${variable.displayName.toLowerCase()}`}
-                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                            className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
                           />
                         )}
                       </div>

@@ -208,7 +208,7 @@ export default function NewProductPage() {
                 value={formData.title}
                 onChange={handleChange}
                 placeholder="e.g., Premium Diamond Necklace"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
                 disabled={loading}
               />
@@ -225,7 +225,7 @@ export default function NewProductPage() {
                 value={formData.category}
                 onChange={handleChange}
                 placeholder="e.g., Jewelry, Electronics, Fashion"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={loading}
               />
             </div>
@@ -241,7 +241,7 @@ export default function NewProductPage() {
                 onChange={handleChange}
                 placeholder="Brief description of your product..."
                 rows={3}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={loading}
               />
             </div>

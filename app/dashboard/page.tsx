@@ -313,7 +313,7 @@ export default function DashboardPage() {
                 placeholder="Search by title or ASIN..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
@@ -326,7 +326,7 @@ export default function DashboardPage() {
                 id="status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="NOT_STARTED">Not Started</option>
@@ -344,7 +344,7 @@ export default function DashboardPage() {
                 id="category"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="ALL">All Categories</option>
                 {uniqueCategories.map((cat) => (
@@ -364,7 +364,7 @@ export default function DashboardPage() {
                 id="source"
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="ALL">All Sources</option>
                 <option value="AMAZON">Amazon Import</option>
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                 <select
                   value={bulkDownloadType}
                   onChange={(e) => setBulkDownloadType(e.target.value as 'source' | 'generated' | 'all')}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="generated">Generated Images</option>
                   <option value="source">Source Images</option>

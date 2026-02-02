@@ -692,7 +692,7 @@ export default function ProductDetailPage() {
                 value={regeneratePrompt}
                 onChange={(e) => setRegeneratePrompt(e.target.value)}
                 placeholder="e.g., make the diamond smaller, increase product size, brighter lighting..."
-                className="w-full border border-gray-300 rounded-lg p-3 min-h-[120px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg p-3 min-h-[120px] text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={regenerating}
               />
             </div>

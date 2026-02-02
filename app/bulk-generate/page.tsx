@@ -429,7 +429,7 @@ export default function BulkGeneratePage() {
                 placeholder="Search by title or ASIN..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
@@ -631,7 +631,7 @@ export default function BulkGeneratePage() {
                   value={customPrompt}
                   onChange={e => setCustomPrompt(e.target.value)}
                   placeholder={templateSelection ? "Additional instructions (optional)..." : "Select a template first..."}
-                  className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </>
