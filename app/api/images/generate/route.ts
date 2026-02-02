@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-
 import { prisma } from "@/lib/prisma"
 import { generateImage } from "@/lib/gemini"
 import { uploadToS3 } from "@/lib/s3"

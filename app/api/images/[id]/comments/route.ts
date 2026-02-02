@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
@@ -16,9 +14,14 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Get default admin user
+    const adminUser = await prisma.user.findFirst({
+      where: { role: 'ADMIN' }
+    })
+
+    if (!adminUser) {
+      return NextResponse.json({ error: "No admin user found" }, { status: 500 })
     }
 
     const body = await request.json()
@@ -27,7 +30,7 @@ export async function POST(
     const comment = await prisma.comment.create({
       data: {
         imageId: id,
-        userId: (session.user as any).id,
+        userId: adminUser.id,
         content: validated.content,
         issueTag: validated.issueTag
       },
@@ -66,10 +69,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const session = await auth()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     const comments = await prisma.comment.findMany({
       where: {

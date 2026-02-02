@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
@@ -16,10 +14,11 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+
+    // Get default admin user for logging
+    const adminUser = await prisma.user.findFirst({
+      where: { role: 'ADMIN' }
+    })
 
     const body = await request.json()
     const validated = updateStatusSchema.parse(body)
@@ -64,11 +63,11 @@ export async function PATCH(
     })
 
     // Add comment if provided
-    if (validated.comment) {
+    if (validated.comment && adminUser) {
       await prisma.comment.create({
         data: {
           imageId: id,
-          userId: (session.user as any).id,
+          userId: adminUser.id,
           content: validated.comment,
           issueTag: validated.status === 'NEEDS_REWORK' ? 'REWORK_REQUESTED' : undefined
         }
@@ -76,20 +75,22 @@ export async function PATCH(
     }
 
     // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId: (session.user as any).id,
-        action: `IMAGE_${validated.status}`,
+    if (adminUser) {
+      await prisma.activityLog.create({
+        data: {
+          userId: adminUser.id,
+          action: `IMAGE_${validated.status}`,
         entityType: "GeneratedImage",
         entityId: image.id,
         metadata: {
           productId: image.product.id,
           productTitle: image.product.title,
-          imageType: image.imageType.name,
+          imageType: image.imageType?.name,
           status: validated.status
         }
       }
-    })
+      })
+    }
 
     // Update analytics
     const today = new Date()

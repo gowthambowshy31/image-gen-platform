@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
@@ -26,10 +24,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+
+    // Get default admin user for logging
+    const adminUser = await prisma.user.findFirst({
+      where: { role: 'ADMIN' }
+    })
 
     const body = await request.json()
     const { productId, sourceImageId } = mappingSchema.parse(body)
@@ -89,20 +88,22 @@ export async function POST(
     })
 
     // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId: (session.user as any).id,
-        action: "SET_SOURCE_IMAGE_MAPPING",
-        entityType: "Product",
-        entityId: productId,
-        metadata: {
-          imageTypeId: id,
-          imageTypeName: imageType.name,
-          sourceImageId,
-          sourceImageVariant: sourceImage.variant
+    if (adminUser) {
+      await prisma.activityLog.create({
+        data: {
+          userId: adminUser.id,
+          action: "SET_SOURCE_IMAGE_MAPPING",
+          entityType: "Product",
+          entityId: productId,
+          metadata: {
+            imageTypeId: id,
+            imageTypeName: imageType.name,
+            sourceImageId,
+            sourceImageVariant: sourceImage.variant
+          }
         }
-      }
-    })
+      })
+    }
 
     return NextResponse.json({
       success: true,
@@ -138,10 +139,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const session = await auth()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get("productId")

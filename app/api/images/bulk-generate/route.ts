@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
@@ -13,10 +11,10 @@ const bulkGenerateSchema = z.object({
 // POST /api/images/bulk-generate - Queue bulk image generation
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Get default admin user for logging
+    const adminUser = await prisma.user.findFirst({
+      where: { role: 'ADMIN' }
+    })
 
     const body = await request.json()
     const validated = bulkGenerateSchema.parse(body)
@@ -36,19 +34,21 @@ export async function POST(request: NextRequest) {
     })
 
     // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId: (session.user as any).id,
-        action: "CREATE_BULK_JOB",
-        entityType: "GenerationJob",
-        entityId: job.id,
-        metadata: {
-          productCount: validated.productIds.length,
-          imageTypeCount: validated.imageTypeIds.length,
-          totalImages
+    if (adminUser) {
+      await prisma.activityLog.create({
+        data: {
+          userId: adminUser.id,
+          action: "CREATE_BULK_JOB",
+          entityType: "GenerationJob",
+          entityId: job.id,
+          metadata: {
+            productCount: validated.productIds.length,
+            imageTypeCount: validated.imageTypeIds.length,
+            totalImages
+          }
         }
-      }
-    })
+      })
+    }
 
     // In a real application, you would trigger a background worker here
     // For now, we'll just return the job
@@ -72,11 +72,6 @@ export async function POST(request: NextRequest) {
 // GET /api/images/bulk-generate - Get all generation jobs
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
 
