@@ -129,10 +129,10 @@ export default function GenerateImagesPage() {
       }
 
       if (successCount > 0) {
-        setProgress(`Successfully generated ${successCount} image${successCount !== 1 ? 's' : ''}!${failCount > 0 ? ` (${failCount} failed)` : ''}`)
+        setProgress(`Successfully generated ${successCount} image${successCount !== 1 ? 's' : ''}! Redirecting...${failCount > 0 ? ` (${failCount} failed)` : ''}`)
 
         setTimeout(() => {
-          router.push(`/products/${product.id}`)
+          window.location.href = `/products/${product.id}`
         }, 2000)
       } else {
         setProgress(`Failed to generate images. Please try again.`)
