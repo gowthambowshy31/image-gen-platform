@@ -63,13 +63,13 @@ export async function generateImage(params: ImageGenerationParams): Promise<Gene
     console.log('📐 Target Dimensions:', `${width}x${height}`)
     // ====================================================
 
-    // Use Gemini 2.5 Flash Image for better image generation
+    // Use Gemini 3 Pro Image for better image generation
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY not configured')
     }
 
-    console.log('🎨 Using Gemini 2.5 Flash Image API...')
+    console.log('🎨 Using Gemini 3 Pro Image API...')
 
     // Prepare content parts
     const contentParts: any[] = []
@@ -123,7 +123,7 @@ export async function generateImage(params: ImageGenerationParams): Promise<Gene
 
     // Call the new Gemini Image API directly
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {

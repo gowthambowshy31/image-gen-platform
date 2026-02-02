@@ -70,17 +70,35 @@ export default function ProductDetailPage() {
   const [imageView, setImageView] = useState<'grid' | 'table'>('grid')
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
 
-  // Download a single image using the proxy API to avoid CORS issues
+  // Download a single image
   const downloadImage = async (imageUrl: string, fileName: string) => {
     try {
-      // Use the proxy endpoint to download external images
-      const proxyUrl = `/api/download/image?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(fileName)}`
-      const link = document.createElement('a')
-      link.href = proxyUrl
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      // For relative URLs (internal API routes like /api/uploads or /api/s3-proxy),
+      // fetch directly and create a blob download
+      if (imageUrl.startsWith('/')) {
+        const response = await fetch(imageUrl)
+        if (!response.ok) {
+          throw new Error('Failed to fetch image')
+        }
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } else {
+        // For external URLs (e.g., Amazon images), use the proxy endpoint to avoid CORS issues
+        const proxyUrl = `/api/download/image?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(fileName)}`
+        const link = document.createElement('a')
+        link.href = proxyUrl
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
     } catch (error) {
       console.error('Download failed:', error)
       alert('Failed to download image')
