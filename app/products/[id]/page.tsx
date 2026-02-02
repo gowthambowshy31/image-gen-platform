@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
+import AmazonImagePush from "@/app/components/AmazonImagePush"
 
 interface SourceImage {
   id: string
@@ -43,6 +44,10 @@ interface GeneratedImage {
     fileName: string
     version: number
   } | null
+  // Amazon push tracking
+  amazonSlot?: string | null
+  amazonPushedAt?: string | null
+  amazonPushStatus?: string | null
 }
 
 interface Product {
@@ -69,6 +74,29 @@ export default function ProductDetailPage() {
   const [downloadingAll, setDownloadingAll] = useState(false)
   const [imageView, setImageView] = useState<'grid' | 'table'>('grid')
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
+
+  // Update image status (approve/reject)
+  const updateImageStatus = async (imageId: string, status: 'APPROVED' | 'REJECTED') => {
+    setUpdatingStatusId(imageId)
+    try {
+      const response = await fetch(`/api/images/${imageId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      })
+      if (response.ok) {
+        await loadProduct()
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to update status: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setUpdatingStatusId(null)
+    }
+  }
 
   // Download a single image
   const downloadImage = async (imageUrl: string, fileName: string) => {
@@ -546,15 +574,40 @@ export default function ProductDetailPage() {
                     </div>
                     <div className="mt-2 text-xs">
                       <p className="font-medium text-gray-700 mb-1">{getImageDisplayName(image)}</p>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                        image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                        image.status === 'COMPLETED' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {image.status}
-                      </span>
-                      <p className="text-gray-500 mt-1">Version {image.version}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          image.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                          image.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                          image.status === 'COMPLETED' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {image.status}
+                        </span>
+                        {/* Approve/Reject buttons for non-approved images */}
+                        {image.status !== 'APPROVED' && (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => updateImageStatus(image.id, 'APPROVED')}
+                              disabled={updatingStatusId === image.id}
+                              className="px-2 py-0.5 bg-green-600 text-white rounded text-[10px] font-semibold hover:bg-green-700 disabled:opacity-50"
+                              title="Approve image"
+                            >
+                              {updatingStatusId === image.id ? '...' : 'Approve'}
+                            </button>
+                          </div>
+                        )}
+                        {image.status === 'APPROVED' && (
+                          <button
+                            onClick={() => updateImageStatus(image.id, 'REJECTED')}
+                            disabled={updatingStatusId === image.id}
+                            className="px-2 py-0.5 bg-gray-400 text-white rounded text-[10px] font-semibold hover:bg-red-600 disabled:opacity-50"
+                            title="Reject image"
+                          >
+                            {updatingStatusId === image.id ? '...' : 'Unapprove'}
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-gray-500">Version {image.version}</p>
 
                       {/* Generation History Indicators */}
                       {image.sourceImage && (
@@ -637,6 +690,38 @@ export default function ProductDetailPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
+                            {/* Approve/Reject buttons */}
+                            {image.status !== 'APPROVED' ? (
+                              <button
+                                onClick={() => updateImageStatus(image.id, 'APPROVED')}
+                                disabled={updatingStatusId === image.id}
+                                className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition disabled:opacity-50"
+                                title="Approve"
+                              >
+                                {updatingStatusId === image.id ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => updateImageStatus(image.id, 'REJECTED')}
+                                disabled={updatingStatusId === image.id}
+                                className="p-1.5 text-green-600 hover:text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                                title="Unapprove"
+                              >
+                                {updatingStatusId === image.id ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                                  </svg>
+                                )}
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteImage(image.id)}
                               disabled={deletingImageId === image.id}
@@ -689,6 +774,18 @@ export default function ProductDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Amazon Push Section */}
+        {product.asin && (
+          <div className="bg-white rounded-lg shadow p-6 mt-6">
+            <AmazonImagePush
+              productId={product.id}
+              productAsin={product.asin || null}
+              images={product.images || []}
+              onPushComplete={loadProduct}
+            />
+          </div>
+        )}
       </div>
 
       {/* Regenerate Modal */}

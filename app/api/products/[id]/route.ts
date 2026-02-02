@@ -46,6 +46,8 @@ export async function GET(
           select: {
             id: true,
             imageTypeId: true,
+            templateId: true,
+            templateName: true,
             status: true,
             version: true,
             fileName: true,
@@ -55,11 +57,21 @@ export async function GET(
             createdAt: true,
             sourceImageId: true,
             parentImageId: true,
+            // Amazon push tracking
+            amazonSlot: true,
+            amazonPushedAt: true,
+            amazonPushStatus: true,
             imageType: {
               select: {
                 id: true,
                 name: true,
                 description: true
+              }
+            },
+            template: {
+              select: {
+                id: true,
+                name: true
               }
             },
             sourceImage: {

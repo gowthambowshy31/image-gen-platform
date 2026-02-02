@@ -53,6 +53,7 @@ model Product {
   promptOverrides     PromptOverride[]
   videoPromptOverrides VideoPromptOverride[]
   sourceImages        SourceImage[]
+  amazonImagePushHistory AmazonImagePush[]
 }
 
 // Source Images from Amazon
@@ -159,6 +160,12 @@ model GeneratedImage {
   comments        Comment[]
   generatedVideos GeneratedVideo[]
 
+  // Amazon Push Tracking
+  amazonSlot           String?
+  amazonPushedAt       DateTime?
+  amazonPushStatus     AmazonPushStatus?
+  amazonPushHistory    AmazonImagePush[]
+
   @@index([productId, imageTypeId])
   @@index([productId, templateId])
   @@index([status])
@@ -171,6 +178,15 @@ enum ImageStatus {
   APPROVED
   NEEDS_REWORK
   REJECTED
+}
+
+// Amazon Push Status for tracking image uploads to Amazon
+enum AmazonPushStatus {
+  NOT_PUSHED
+  PENDING
+  PUSHING
+  SUCCESS
+  FAILED
 }
 
 // Video Type Templates
@@ -385,4 +401,27 @@ model TemplateUsage {
 
   @@index([templateId])
   @@index([createdAt])
+}
+
+// Amazon Image Push History - tracks when images are pushed to Amazon listings
+model AmazonImagePush {
+  id               String           @id @default(cuid())
+  generatedImageId String
+  generatedImage   GeneratedImage   @relation(fields: [generatedImageId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  asin             String
+  amazonSlot       String           // MAIN, PT01, PT02, ... PT08
+  imageUrl         String
+  status           AmazonPushStatus @default(PENDING)
+  errorMessage     String?          @db.Text
+  amazonResponse   Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  completedAt      DateTime?
+
+  @@index([generatedImageId])
+  @@index([productId])
+  @@index([asin, amazonSlot])
+  @@index([status])
 }

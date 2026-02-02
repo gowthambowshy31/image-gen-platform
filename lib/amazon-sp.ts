@@ -26,6 +26,26 @@ interface AmazonProduct {
   attributes?: Record<string, any>
 }
 
+// Types for updating listing images
+export interface ImageSlotMapping {
+  slot: 'MAIN' | 'PT01' | 'PT02' | 'PT03' | 'PT04' | 'PT05' | 'PT06' | 'PT07' | 'PT08'
+  imageUrl: string
+}
+
+export interface UpdateListingImagesParams {
+  sku: string
+  images: ImageSlotMapping[]
+  productType: string
+}
+
+export interface UpdateListingImagesResult {
+  success: boolean
+  status: string
+  submissionId?: string
+  issues?: Array<{ code: string; message: string; severity: string }>
+  error?: string
+}
+
 export class AmazonSPService {
   private client: any
 
@@ -283,6 +303,143 @@ export class AmazonSPService {
       return items
     } catch (error) {
       console.error("Error fetching FBA inventory with quantity:", error)
+      throw error
+    }
+  }
+
+  /**
+   * Update product images on Amazon listing using Listings Items API
+   * Uses PATCH operation to update specific image attributes
+   *
+   * Note: Images must be hosted at a publicly accessible URL or in an S3 bucket
+   * with proper permissions granted to Amazon's Media Download Role
+   */
+  async updateListingImages(params: UpdateListingImagesParams): Promise<UpdateListingImagesResult> {
+    try {
+      const { sku, images, productType } = params
+      const sellerId = process.env.AMAZON_SELLER_ID
+      const marketplaceId = process.env.AMAZON_MARKETPLACE_ID || "ATVPDKIKX0DER"
+
+      if (!sellerId) {
+        return {
+          success: false,
+          status: 'ERROR',
+          error: 'AMAZON_SELLER_ID environment variable is not configured'
+        }
+      }
+
+      // Build the patches array for image updates
+      // Amazon uses different attribute names for each image slot
+      const patches = images.map(({ slot, imageUrl }) => {
+        let attributeName: string
+
+        if (slot === 'MAIN') {
+          attributeName = 'main_product_image_locator'
+        } else {
+          // PT01 -> other_product_image_locator_1, PT02 -> other_product_image_locator_2, etc.
+          const slotNumber = parseInt(slot.replace('PT0', '').replace('PT', ''))
+          attributeName = `other_product_image_locator_${slotNumber}`
+        }
+
+        return {
+          op: 'replace',
+          path: `/attributes/${attributeName}`,
+          value: [
+            {
+              media_location: imageUrl,
+              marketplace_id: marketplaceId
+            }
+          ]
+        }
+      })
+
+      console.log(`Updating listing images for SKU: ${sku}, Seller: ${sellerId}`)
+      console.log(`Patches:`, JSON.stringify(patches, null, 2))
+
+      const response = await this.client.callAPI({
+        operation: "patchListingsItem",
+        endpoint: "listingsItems",
+        path: {
+          sellerId: sellerId,
+          sku: sku
+        },
+        query: {
+          marketplaceIds: marketplaceId
+        },
+        body: {
+          productType: productType,
+          patches: patches
+        }
+      })
+
+      console.log(`Amazon API Response:`, JSON.stringify(response, null, 2))
+
+      // Check response for success/failure
+      // Amazon returns status: "ACCEPTED" for successful submissions
+      if (response?.status === 'ACCEPTED') {
+        return {
+          success: true,
+          status: 'ACCEPTED',
+          submissionId: response.submissionId,
+          issues: response.issues || []
+        }
+      }
+
+      // Handle other statuses
+      return {
+        success: false,
+        status: response?.status || 'UNKNOWN',
+        issues: response?.issues || [],
+        error: `Listing update returned status: ${response?.status || 'UNKNOWN'}`
+      }
+    } catch (error) {
+      console.error("Error updating listing images:", error)
+
+      // Extract meaningful error message
+      let errorMessage = 'Unknown error'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error)
+      }
+
+      return {
+        success: false,
+        status: 'ERROR',
+        error: errorMessage
+      }
+    }
+  }
+
+  /**
+   * Get listing item details including current images
+   * Useful for checking current state before updating
+   */
+  async getListingItem(sku: string): Promise<any> {
+    try {
+      const sellerId = process.env.AMAZON_SELLER_ID
+      const marketplaceId = process.env.AMAZON_MARKETPLACE_ID || "ATVPDKIKX0DER"
+
+      if (!sellerId) {
+        throw new Error('AMAZON_SELLER_ID environment variable is not configured')
+      }
+
+      const response = await this.client.callAPI({
+        operation: "getListingsItem",
+        endpoint: "listingsItems",
+        path: {
+          sellerId: sellerId,
+          sku: sku
+        },
+        query: {
+          marketplaceIds: marketplaceId,
+          includedData: "summaries,attributes,issues"
+        }
+      })
+
+      return response
+    } catch (error) {
+      console.error("Error getting listing item:", error)
       throw error
     }
   }

@@ -83,3 +83,55 @@ export function getS3KeyFromUrl(url: string): string | null {
     return null
   }
 }
+
+/**
+ * Get the public URL for an S3 object
+ * Note: This URL will only work if the bucket has appropriate permissions
+ * For Amazon SP-API, the bucket needs to grant access to Amazon's Media Download Role
+ */
+export function getPublicS3Url(key: string): string {
+  const bucket = getBucketName()
+  const region = process.env.AWS_REGION || "eu-north-1"
+  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`
+}
+
+/**
+ * Amazon's Media Download Role ARN
+ * This IAM role needs GetObject permission on your S3 bucket for Amazon to fetch images
+ */
+export const AMAZON_MEDIA_DOWNLOAD_ROLE = "arn:aws:iam::368641386589:role/Media-Download-Role"
+
+/**
+ * Generate the bucket policy that grants Amazon's Media Download Role read access
+ * This policy should be added to your S3 bucket via AWS Console or CLI
+ *
+ * @returns The policy object that can be converted to JSON and applied to the bucket
+ */
+export function generateAmazonAccessPolicy(): object {
+  const bucketName = getBucketName()
+
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "AmazonMediaDownloadAccess",
+        Effect: "Allow",
+        Principal: {
+          AWS: AMAZON_MEDIA_DOWNLOAD_ROLE
+        },
+        Action: [
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ],
+        Resource: `arn:aws:s3:::${bucketName}/generated-images/*`
+      }
+    ]
+  }
+}
+
+/**
+ * Get the current bucket name for display purposes
+ */
+export function getCurrentBucketName(): string {
+  return getBucketName()
+}
