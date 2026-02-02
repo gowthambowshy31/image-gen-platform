@@ -14,9 +14,7 @@ import dotenv from "dotenv"
 // Load environment variables
 dotenv.config()
 
-const prisma = new PrismaClient({
-  datasourceUrl: process.env.DATABASE_URL
-})
+const prisma = new PrismaClient()
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "eu-north-1",
