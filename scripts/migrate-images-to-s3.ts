@@ -6,6 +6,8 @@
  */
 
 import { PrismaClient } from "@prisma/client"
+import { PrismaPg } from "@prisma/adapter-pg"
+import { Pool } from "pg"
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
 import fs from "fs/promises"
 import path from "path"
@@ -14,7 +16,14 @@ import dotenv from "dotenv"
 // Load environment variables
 dotenv.config()
 
-const prisma = new PrismaClient()
+// Initialize Prisma with the Postgres adapter (same as lib/prisma.ts)
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+  throw new Error("DATABASE_URL environment variable is not set")
+}
+const pool = new Pool({ connectionString })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "eu-north-1",
@@ -186,4 +195,7 @@ async function migrateImages() {
 
 migrateImages()
   .catch(console.error)
-  .finally(() => prisma.$disconnect())
+  .finally(async () => {
+    await prisma.$disconnect()
+    await pool.end()
+  })
