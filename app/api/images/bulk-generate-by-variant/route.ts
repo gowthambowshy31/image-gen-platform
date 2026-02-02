@@ -290,29 +290,37 @@ async function processJob(
         continue
       }
 
-      // Upload to S3
-      let finalFilePath = outputPath
-      try {
-        const imageBuffer = await fs.readFile(outputPath)
-        const s3Key = `generated-images/${product.id}/${fileName}`
-        const s3Result = await uploadToS3({
-          buffer: imageBuffer,
-          key: s3Key,
-          contentType: "image/png"
+      // Upload to S3 (mandatory)
+      const imageBuffer = await fs.readFile(outputPath)
+      const s3Key = `generated-images/${product.id}/${fileName}`
+      const s3Result = await uploadToS3({
+        buffer: imageBuffer,
+        key: s3Key,
+        contentType: "image/png"
+      })
+
+      // Clean up local file regardless of S3 result
+      try { await fs.unlink(outputPath) } catch {}
+
+      if (!s3Result.success || !s3Result.url) {
+        // S3 upload failed - mark as failed
+        console.error(`[Bulk Job ${jobId}] S3 upload failed for ${product.asin}: ${s3Result.error}`)
+        await prisma.generatedImage.update({
+          where: { id: imageRecord.id },
+          data: { status: "REJECTED" }
         })
+        failedCount++
+        errors.push(`${product.asin || product.id}: S3 upload failed - ${s3Result.error}`)
+        await updateJobProgress(jobId, completedCount, failedCount, errors)
+        continue
+      }
 
-        if (s3Result.success && s3Result.url) {
-          finalFilePath = s3Result.url
-          try { await fs.unlink(outputPath) } catch {}
-        }
-      } catch {}
-
-      // Update image record
+      // Update image record with S3 URL
       await prisma.generatedImage.update({
         where: { id: imageRecord.id },
         data: {
           status: "COMPLETED",
-          filePath: finalFilePath,
+          filePath: s3Result.url,
           width: result.width,
           height: result.height,
           fileSize: result.fileSize

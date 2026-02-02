@@ -76,6 +76,24 @@ interface JobImage {
   createdAt: string
 }
 
+// Get the display URL for a generated image (handles S3 URLs, absolute server paths, and local paths)
+const getImageUrl = (image: JobImage) => {
+  if (image.filePath?.startsWith('http')) {
+    // S3 URL - extract key and use proxy to avoid CORS/auth issues
+    try {
+      const url = new URL(image.filePath)
+      const key = url.pathname.substring(1) // Remove leading slash
+      return `/api/s3-proxy?key=${encodeURIComponent(key)}`
+    } catch {
+      return image.filePath
+    }
+  }
+
+  // For absolute server paths (e.g., /home/ubuntu/...) or relative paths,
+  // use the fileName to load via the uploads API
+  return `/api/uploads/${image.fileName}`
+}
+
 export default function BulkGeneratePage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<"generate" | "history">("generate")
@@ -889,7 +907,7 @@ export default function BulkGeneratePage() {
                               >
                                 <div className="relative">
                                   <img
-                                    src={img.filePath}
+                                    src={getImageUrl(img)}
                                     alt={img.fileName}
                                     className="w-full h-32 object-contain bg-white"
                                   />

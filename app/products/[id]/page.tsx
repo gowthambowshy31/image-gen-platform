@@ -162,7 +162,14 @@ export default function ProductDetailPage() {
   // Get the display URL for a generated image
   const getImageUrl = (image: GeneratedImage) => {
     if (image.filePath?.startsWith('http')) {
-      return image.filePath
+      // Extract S3 key from the URL and use proxy to avoid CORS/auth issues
+      try {
+        const url = new URL(image.filePath)
+        const key = url.pathname.substring(1) // Remove leading slash
+        return `/api/s3-proxy?key=${encodeURIComponent(key)}`
+      } catch {
+        return image.filePath
+      }
     }
     // Use the dynamic API route to serve uploaded files (Next.js production
     // mode does not serve files added to /public after build time)

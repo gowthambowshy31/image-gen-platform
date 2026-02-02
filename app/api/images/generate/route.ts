@@ -346,33 +346,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Upload generated image to S3
-    let finalFilePath = outputPath
-    try {
-      const imageBuffer = await fs.readFile(outputPath)
-      const s3Key = `generated-images/${product.id}/${fileName}`
-      const s3Result = await uploadToS3({
-        buffer: imageBuffer,
-        key: s3Key,
-        contentType: 'image/png'
+    // Upload generated image to S3 (mandatory - we don't keep local files)
+    let finalFilePath: string
+    const imageBuffer = await fs.readFile(outputPath)
+    const s3Key = `generated-images/${product.id}/${fileName}`
+    const s3Result = await uploadToS3({
+      buffer: imageBuffer,
+      key: s3Key,
+      contentType: 'image/png'
+    })
+
+    if (s3Result.success && s3Result.url) {
+      finalFilePath = s3Result.url
+      console.log('☁️  Uploaded generated image to S3:', s3Result.url)
+
+      // Delete local file after successful S3 upload
+      try {
+        await fs.unlink(outputPath)
+        console.log('🧹 Deleted local file after S3 upload')
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    } else {
+      // S3 upload failed - this is now a hard error
+      console.error('❌ S3 upload failed:', s3Result.error)
+
+      // Clean up local file
+      try {
+        await fs.unlink(outputPath)
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+
+      // Mark image as failed
+      await prisma.generatedImage.update({
+        where: { id: imageRecord.id },
+        data: { status: 'REJECTED' }
       })
 
-      if (s3Result.success && s3Result.url) {
-        finalFilePath = s3Result.url
-        console.log('☁️  Uploaded generated image to S3:', s3Result.url)
-
-        // Delete local file after successful S3 upload
-        try {
-          await fs.unlink(outputPath)
-          console.log('🧹 Deleted local file after S3 upload')
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      } else {
-        console.log('⚠️  S3 upload failed, keeping local file:', s3Result.error)
-      }
-    } catch (s3Error) {
-      console.error('⚠️  Error uploading to S3, keeping local file:', s3Error)
+      return NextResponse.json(
+        { error: `S3 upload failed: ${s3Result.error}` },
+        { status: 500 }
+      )
     }
 
     // Update image record with results
