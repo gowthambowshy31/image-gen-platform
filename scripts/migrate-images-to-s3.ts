@@ -9,8 +9,14 @@ import { PrismaClient } from "@prisma/client"
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
 import fs from "fs/promises"
 import path from "path"
+import dotenv from "dotenv"
 
-const prisma = new PrismaClient()
+// Load environment variables
+dotenv.config()
+
+const prisma = new PrismaClient({
+  datasourceUrl: process.env.DATABASE_URL
+})
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "eu-north-1",
