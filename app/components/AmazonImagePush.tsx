@@ -33,6 +33,7 @@ interface AmazonImagePushProps {
   productAsin: string | null
   images: GeneratedImage[]
   onPushComplete: () => void
+  onUnapprove?: (imageId: string) => void
 }
 
 const AMAZON_SLOTS = [
@@ -51,7 +52,8 @@ export default function AmazonImagePush({
   productId,
   productAsin,
   images,
-  onPushComplete
+  onPushComplete,
+  onUnapprove
 }: AmazonImagePushProps) {
   const [selectedImages, setSelectedImages] = useState<Map<string, string>>(new Map())
   const [pushing, setPushing] = useState(false)
@@ -59,6 +61,7 @@ export default function AmazonImagePush({
   const [success, setSuccess] = useState<string | null>(null)
   const [pushHistory, setPushHistory] = useState<PushHistoryRecord[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [unapprovingId, setUnapprovingId] = useState<string | null>(null)
 
   // Filter to only approved images
   const approvedImages = images.filter(img => img.status === 'APPROVED')
@@ -99,6 +102,37 @@ export default function AmazonImagePush({
   // Get image display name
   const getImageName = (image: GeneratedImage) => {
     return image.templateName || image.template?.name || image.imageType?.name || image.fileName
+  }
+
+  const handleUnapprove = async (imageId: string) => {
+    if (onUnapprove) {
+      onUnapprove(imageId)
+      return
+    }
+
+    // If no callback provided, handle it internally
+    setUnapprovingId(imageId)
+    try {
+      const response = await fetch(`/api/images/${imageId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'COMPLETED' })
+      })
+      if (response.ok) {
+        // Remove from selected images if it was selected
+        const newSelected = new Map(selectedImages)
+        newSelected.delete(imageId)
+        setSelectedImages(newSelected)
+        onPushComplete() // Refresh the parent
+      } else {
+        const errorData = await response.json()
+        setError(`Failed to unapprove: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setUnapprovingId(null)
+    }
   }
 
   const handleSlotChange = (imageId: string, slot: string) => {
@@ -342,7 +376,7 @@ export default function AmazonImagePush({
               <select
                 value={selectedSlot}
                 onChange={(e) => handleSlotChange(image.id, e.target.value)}
-                disabled={pushing}
+                disabled={pushing || unapprovingId === image.id}
                 className={`border rounded-lg px-3 py-2 text-sm min-w-[140px] ${
                   isSelected
                     ? 'border-orange-400 bg-white'
@@ -365,6 +399,22 @@ export default function AmazonImagePush({
                   )
                 })}
               </select>
+
+              {/* Unapprove Button */}
+              <button
+                onClick={() => handleUnapprove(image.id)}
+                disabled={pushing || unapprovingId === image.id}
+                className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Unapprove image"
+              >
+                {unapprovingId === image.id ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-orange-600 border-t-transparent"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+              </button>
             </div>
           )
         })}

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
 const updateStatusSchema = z.object({
-  status: z.enum(["PENDING", "APPROVED", "NEEDS_REWORK", "REJECTED"]),
+  status: z.enum(["PENDING", "COMPLETED", "APPROVED", "NEEDS_REWORK", "REJECTED"]),
   comment: z.string().optional()
 })
 

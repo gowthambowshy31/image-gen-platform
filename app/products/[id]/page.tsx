@@ -75,9 +75,10 @@ export default function ProductDetailPage() {
   const [imageView, setImageView] = useState<'grid' | 'table'>('grid')
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
+  const [refreshingFromAmazon, setRefreshingFromAmazon] = useState(false)
 
-  // Update image status (approve/reject)
-  const updateImageStatus = async (imageId: string, status: 'APPROVED' | 'REJECTED') => {
+  // Update image status (approve/reject/unapprove)
+  const updateImageStatus = async (imageId: string, status: 'APPROVED' | 'REJECTED' | 'COMPLETED') => {
     setUpdatingStatusId(imageId)
     try {
       const response = await fetch(`/api/images/${imageId}/status`, {
@@ -95,6 +96,33 @@ export default function ProductDetailPage() {
       alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setUpdatingStatusId(null)
+    }
+  }
+
+  // Refresh source images from Amazon
+  const refreshFromAmazon = async () => {
+    if (!product?.asin) {
+      alert('Product has no ASIN - cannot refresh from Amazon')
+      return
+    }
+
+    setRefreshingFromAmazon(true)
+    try {
+      const response = await fetch(`/api/products/${params.id}/refresh-images`, {
+        method: 'POST'
+      })
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        await loadProduct()
+        alert(`Refreshed ${result.summary?.importedImageCount || 0} images from Amazon`)
+      } else {
+        alert(`Failed to refresh: ${result.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setRefreshingFromAmazon(false)
     }
   }
 
@@ -418,27 +446,53 @@ export default function ProductDetailPage() {
             <h2 className="text-lg font-semibold text-gray-900">
               Source Images from Amazon ({filteredSourceImages.length})
             </h2>
-            {filteredSourceImages.length > 0 && (
-              <button
-                onClick={downloadAllSourceImages}
-                disabled={downloadingAll}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-              >
-                {downloadingAll ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Preparing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download All
-                  </>
-                )}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Refresh from Amazon Button */}
+              {product.asin && (
+                <button
+                  onClick={refreshFromAmazon}
+                  disabled={refreshingFromAmazon}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition disabled:opacity-50"
+                  title="Refresh images from Amazon listing"
+                >
+                  {refreshingFromAmazon ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh from Amazon
+                    </>
+                  )}
+                </button>
+              )}
+              {/* Download All Button */}
+              {filteredSourceImages.length > 0 && (
+                <button
+                  onClick={downloadAllSourceImages}
+                  disabled={downloadingAll}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {downloadingAll ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Preparing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download All
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
           {filteredSourceImages.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -598,10 +652,10 @@ export default function ProductDetailPage() {
                         )}
                         {image.status === 'APPROVED' && (
                           <button
-                            onClick={() => updateImageStatus(image.id, 'REJECTED')}
+                            onClick={() => updateImageStatus(image.id, 'COMPLETED')}
                             disabled={updatingStatusId === image.id}
-                            className="px-2 py-0.5 bg-gray-400 text-white rounded text-[10px] font-semibold hover:bg-red-600 disabled:opacity-50"
-                            title="Reject image"
+                            className="px-2 py-0.5 bg-gray-400 text-white rounded text-[10px] font-semibold hover:bg-orange-500 disabled:opacity-50"
+                            title="Unapprove image"
                           >
                             {updatingStatusId === image.id ? '...' : 'Unapprove'}
                           </button>
@@ -708,16 +762,16 @@ export default function ProductDetailPage() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => updateImageStatus(image.id, 'REJECTED')}
+                                onClick={() => updateImageStatus(image.id, 'COMPLETED')}
                                 disabled={updatingStatusId === image.id}
-                                className="p-1.5 text-green-600 hover:text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                                className="p-1.5 text-green-600 hover:text-orange-600 hover:bg-orange-50 rounded transition disabled:opacity-50"
                                 title="Unapprove"
                               >
                                 {updatingStatusId === image.id ? (
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
                                 ) : (
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 )}
                               </button>

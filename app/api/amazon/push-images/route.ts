@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getAmazonSPClient, ImageSlotMapping } from "@/lib/amazon-sp"
-import { getPublicS3Url, getS3KeyFromUrl } from "@/lib/s3"
+import { getPublicS3Url } from "@/lib/s3"
+import { downloadAndStoreImage } from "@/lib/image-storage"
 import { z } from "zod"
 
 const pushImagesSchema = z.object({
@@ -174,6 +175,66 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // If push was successful, refresh source images from Amazon
+    // Note: Amazon may take a few minutes to process, so images might not show immediately
+    let sourceImagesRefreshed = false
+    let refreshError: string | undefined
+
+    if (result.success) {
+      try {
+        console.log(`Refreshing source images for product ${productId} from Amazon...`)
+
+        // Fetch fresh product data from Amazon
+        const amazonProduct = await amazonSP.getProductByASIN(product.asin!)
+
+        if (amazonProduct && amazonProduct.images.length > 0) {
+          // Delete existing source images
+          await prisma.sourceImage.deleteMany({
+            where: { productId }
+          })
+
+          // Download and save new images from Amazon
+          for (let i = 0; i < amazonProduct.images.length; i++) {
+            const amazonImage = amazonProduct.images[i]
+
+            try {
+              const downloadResult = await downloadAndStoreImage({
+                url: amazonImage.link,
+                productId,
+                variant: amazonImage.variant,
+                order: i
+              })
+
+              if (downloadResult.success && downloadResult.filePath) {
+                await prisma.sourceImage.create({
+                  data: {
+                    productId,
+                    amazonImageUrl: amazonImage.link,
+                    localFilePath: downloadResult.filePath,
+                    imageOrder: i,
+                    width: downloadResult.width || amazonImage.width,
+                    height: downloadResult.height || amazonImage.height,
+                    fileSize: downloadResult.fileSize,
+                    variant: amazonImage.variant
+                  }
+                })
+              }
+            } catch (imgErr) {
+              console.error(`Failed to download source image ${i}:`, imgErr)
+              // Continue with other images
+            }
+          }
+
+          sourceImagesRefreshed = true
+          console.log(`Source images refreshed for product ${productId}`)
+        }
+      } catch (refreshErr) {
+        console.error("Error refreshing source images:", refreshErr)
+        refreshError = refreshErr instanceof Error ? refreshErr.message : "Unknown error"
+        // Don't fail the whole request - push was still successful
+      }
+    }
+
     return NextResponse.json({
       success: result.success,
       message: result.success
@@ -191,7 +252,9 @@ export async function POST(request: NextRequest) {
         status: result.status,
         issues: result.issues,
         submissionId: result.submissionId
-      }
+      },
+      sourceImagesRefreshed,
+      refreshError
     })
 
   } catch (error) {

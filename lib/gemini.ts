@@ -279,7 +279,7 @@ async function fallbackImageProcessing(params: ImageGenerationParams): Promise<G
  */
 export async function analyzeImage(imagePath: string, prompt: string): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" })
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
 
     const imageBuffer = await fs.readFile(imagePath)
     const base64Image = imageBuffer.toString('base64')
@@ -305,6 +305,36 @@ export async function analyzeImage(imagePath: string, prompt: string): Promise<s
 /**
  * Generate image improvement suggestions using Gemini
  */
+/**
+ * Generate image generation prompts from a reference image using Gemini Vision
+ * Accepts base64 image data directly (no file read needed)
+ */
+export async function generatePromptFromImage(
+  base64Data: string,
+  mimeType: string,
+  instruction: string
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+
+    const result = await model.generateContent([
+      instruction,
+      {
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      }
+    ])
+
+    const response = await result.response
+    return response.text()
+  } catch (error) {
+    console.error("Error generating prompt from image:", error)
+    throw error
+  }
+}
+
 export async function suggestImprovements(imagePath: string, currentPrompt: string): Promise<string[]> {
   try {
     const analysisPrompt = `Analyze this product image and suggest 3-5 specific improvements to the image generation prompt. Current prompt: "${currentPrompt}". Focus on composition, lighting, product presentation, and Amazon listing requirements.`
